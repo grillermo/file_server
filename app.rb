@@ -90,7 +90,7 @@ class FileToS3App
     return uploaded unless uploaded.is_a?(Hash)
 
     pinned = pinned_name(req)
-    return unprocessable("#{pinned} is reserved") if RESERVED_NAMES.include?(pinned)
+    return unprocessable("#{pinned} is reserved") if pinned && RESERVED_NAMES.include?(pinned.downcase)
 
     filename = pinned || build_local_filename(uploaded[:filename])
     FileUtils.mkdir_p(files_dir)
@@ -200,7 +200,7 @@ class FileToS3App
   def latest_filename
     Dir.children(files_dir)
       .map { |name| File.join(files_dir, name) }
-      .select { |path| File.file?(path) && !RESERVED_NAMES.include?(File.basename(path)) }
+      .select { |path| File.file?(path) && !RESERVED_NAMES.include?(File.basename(path).downcase) }
       .max_by { |path| File.mtime(path) }
       &.then { |path| File.basename(path) }
   end

@@ -151,6 +151,13 @@ class AuthTest < Minitest::Test
     assert_equal "mcp.html is reserved", body.join
   end
 
+  def test_pinned_upload_cannot_overwrite_the_install_page_regardless_of_case
+    status, _, body = upload("test-token", query: "?name=MCP.html")
+
+    assert_equal 422, status
+    assert_equal "MCP.html is reserved", body.join
+  end
+
   def test_root_redirect_skips_the_install_page
     files = ENV["FILES_DIR"]
     FileUtils.mkdir_p(files)
