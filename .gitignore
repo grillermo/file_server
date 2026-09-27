@@ -3,4 +3,6 @@ vendor/bundle/
 .env
 .DS_Store
 *.log
-files/
+files/*
+!files/mcp.html
+tokens.json

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>file-to-s3 MCP</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f6f6f7; --card: #fff; --fg: #16161a; --dim: #74747e; --line: #e3e3e7; --accent: #2f6fed; --code: #f0f0f3; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111114; --card: #1b1b20; --fg: #f2f2f4; --dim: #9a9aa4; --line: #2a2a32; --accent: #7ea6ff; --code: #24242b; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 1rem 1rem 3rem; background: var(--bg); color: var(--fg);
+         font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 1.25rem; margin: .25rem 0 .25rem; }
+  h2 { font-size: 1rem; margin: 1.75rem 0 .5rem; }
+  p, li { color: var(--fg); }
+  .dim { color: var(--dim); font-size: .9rem; }
+  .cmd { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin: .5rem 0; }
+  .cmd pre { margin: 0; padding: .8rem 4.5rem .8rem 1rem; overflow-x: auto; background: var(--code); border-radius: 10px;
+             font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; }
+  .cmd button { position: absolute; top: .45rem; right: .45rem; border: 1px solid var(--line); background: var(--card);
+                color: var(--accent); border-radius: 6px; padding: .2rem .6rem; font: inherit; font-size: .8rem; cursor: pointer; }
+  code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  ol { padding-left: 1.25rem; }
+  @media (min-width: 40rem) { body { padding: 2rem 1.5rem 4rem; } }
+</style>
+</head>
+<body>
+<main>
+<h1>file-to-s3 MCP</h1>
+<p class="dim">Lets Claude Code upload local files to files.chiq.me. Log in once per machine with a code from Slack #otp; the token never expires.</p>
+
+<h2>New machine</h2>
+<div class="cmd"><pre>git clone git@github.com:grillermo/agents-configs.git ~/c/agents-configs
+~/c/agents-configs/install.sh</pre><button type="button">Copy</button></div>
+
+<h2>Already have agents-configs</h2>
+<div class="cmd"><pre>cd ~/c/agents-configs &amp;&amp; git pull &amp;&amp; ./install.sh</pre><button type="button">Copy</button></div>
+
+<h2>Without install.sh</h2>
+<div class="cmd"><pre>claude mcp add --scope user file-to-s3 -- ruby ~/c/agents-configs/mcp/file-to-s3/server.rb</pre><button type="button">Copy</button></div>
+
+<h2>Log in and upload</h2>
+<ol>
+  <li>In Claude Code: <code>log in to file_to_s3</code></li>
+  <li>Paste the 6-digit code posted to Slack <strong>#otp</strong>.</li>
+  <li><code>upload ~/path/to/file</code> — Claude replies with the URL.</li>
+</ol>
+<p class="dim">Needs Ruby 3. Point at another server with <code>FILE_TO_S3_URL</code>. The token lives in <code>~/.config/file-to-s3/token</code>.</p>
+
+<h2>Revoke a machine (on the server)</h2>
+<div class="cmd"><pre>bin/tokens list
+bin/tokens revoke &lt;hostname&gt;</pre><button type="button">Copy</button></div>
+</main>
+<script>
+  document.querySelectorAll(".cmd button").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const text = button.previousElementSibling.textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        button.textContent = "Copied";
+      } catch {
+        const range = document.createRange();
+        range.selectNodeContents(button.previousElementSibling);
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        button.textContent = "Selected";
+      }
+      setTimeout(() => { button.textContent = "Copy"; }, 1500);
+    });
+  });
+</script>
+</body>
+</html>
