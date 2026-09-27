@@ -1,0 +1,20 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Lists or revokes the never-expiring tokens issued by MCP logins.
+#   bin/tokens list
+#   bin/tokens revoke <label|digest-prefix>
+
+require_relative "../lib/token_store"
+
+store = TokenStore.new(ENV.fetch("TOKENS_FILE") { File.expand_path("../tokens.json", __dir__) })
+
+case ARGV
+in ["list"]
+  store.list.each { |entry| puts [entry["label"], entry["created_at"], entry["digest"][0, 12]].join("\t") }
+in ["revoke", key] unless key.empty?
+  puts "revoked #{store.revoke(key)}"
+else
+  warn "usage: bin/tokens list | bin/tokens revoke <label|digest-prefix>"
+  exit 64
+end
