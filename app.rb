@@ -4,8 +4,20 @@ require "json"
 require "rack"
 require "securerandom"
 require "uri"
+require_relative "lib/otp"
+require_relative "lib/slack_notifier"
+require_relative "lib/token_store"
 
 class FileToS3App
+  # Served from files/ like any upload, but owned by the repo.
+  RESERVED_NAMES = ["mcp.html"].freeze
+
+  def initialize(otp: Otp.new(notifier: SlackNotifier.from_env),
+                 tokens: TokenStore.new(ENV.fetch("TOKENS_FILE") { File.join(__dir__, "tokens.json") }))
+    @otp = otp
+    @tokens = tokens
+  end
+
   def call(env)
     req = Rack::Request.new(env)
 
@@ -18,6 +30,10 @@ class FileToS3App
       return unauthorized unless authenticated?(req)
 
       handle_receive(req)
+    in ["POST", "/auth/otp"]
+      request_otp(req)
+    in ["POST", "/auth/verify"]
+      verify_otp(req)
     in ["GET", "/"]
       serve_index(req)
     in ["GET", "/index"]
@@ -33,12 +49,40 @@ class FileToS3App
 
   private
 
+  # AUTH_TOKEN is the Shortcuts' shared secret; fts_ tokens come from an MCP
+  # login and never expire until revoked with bin/tokens.
   def authenticated?(req)
-    bearer_token(req) == ENV.fetch("AUTH_TOKEN")
+    token = bearer_token(req)
+    return false unless token
+
+    Rack::Utils.secure_compare(token, ENV.fetch("AUTH_TOKEN")) || @tokens.valid?(token)
   end
 
   def bearer_token(req)
     req.get_header("HTTP_AUTHORIZATION").to_s[/\ABearer\s+(.+)\z/, 1]
+  end
+
+  def request_otp(req)
+    @otp.issue(otp_label(req))
+    text_response(202, "OTP sent to Slack #otp")
+  rescue Otp::NotConfigured
+    text_response(503, "OTP delivery not configured")
+  rescue Otp::TooSoon
+    text_response(429, "An OTP was sent less than #{Otp::MIN_INTERVAL}s ago; check Slack #otp")
+  end
+
+  def verify_otp(req)
+    return text_response(401, "Invalid or expired code") unless @otp.verify(req.params["code"].to_s.strip)
+
+    token = @tokens.issue(otp_label(req))
+    [200, { "content-type" => "application/json" }, [{ token: token }.to_json]]
+  end
+
+  # The label ends up in a Slack message, so strip anything that could form a
+  # mention or link (<!channel>, <@U123>) and cap its length.
+  def otp_label(req)
+    label = req.params["label"].to_s.gsub(/[^\w.\-]/, "")[0, 64]
+    label.empty? ? "unknown" : label
   end
 
   def handle_upload(req)
@@ -46,6 +90,8 @@ class FileToS3App
     return uploaded unless uploaded.is_a?(Hash)
 
     pinned = pinned_name(req)
+    return unprocessable("#{pinned} is reserved") if RESERVED_NAMES.include?(pinned)
+
     filename = pinned || build_local_filename(uploaded[:filename])
     FileUtils.mkdir_p(files_dir)
 
@@ -154,7 +200,7 @@ class FileToS3App
   def latest_filename
     Dir.children(files_dir)
       .map { |name| File.join(files_dir, name) }
-      .select { |path| File.file?(path) }
+      .select { |path| File.file?(path) && !RESERVED_NAMES.include?(File.basename(path)) }
       .max_by { |path| File.mtime(path) }
       &.then { |path| File.basename(path) }
   end

@@ -82,3 +82,20 @@ The response is always `https://files.chiq.me/files/awh-manifest.plist`, and
 pinned responses carry `cache-control: no-cache` so caches in front of the
 service revalidate instead of serving a stale copy. Without `?name=`, uploads
 keep their UUID prefix and never overwrite anything.
+
+## MCP login
+
+The `file-to-s3` MCP in `agents-configs` logs in with a Slack OTP and then
+uploads with a token that never expires. Install instructions are served at
+`/files/mcp.html`.
+
+- `POST /auth/otp` (`label`) posts a 6-digit code to Slack `#otp`
+  (needs `SLACK_OTP_WEBHOOK_URL` in `.env`). 202, or 429 within 30 s of the last code.
+- `POST /auth/verify` (`code`, `label`) returns `{"token":"fts_..."}`. Five wrong
+  codes void the current one.
+- Tokens are stored as SHA-256 digests in `tokens.json` (`TOKENS_FILE` overrides).
+
+```sh
+bin/tokens list
+bin/tokens revoke <label|digest-prefix>
+```
