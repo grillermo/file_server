@@ -48,7 +48,7 @@
   <li>Paste the 6-digit code posted to Slack <strong>#otp</strong>.</li>
   <li><code>upload ~/path/to/file</code> — Claude replies with the URL.</li>
 </ol>
-<p class="dim">Needs Ruby 3. Point at another server with <code>FILE_SERVER_URL</code>. The token lives in <code>~/.config/file_server/token</code>.</p>
+<p class="dim">Needs Ruby 3. Point at another server with <code>FILE_SERVER_URL</code>; at home it uploads straight to <code>FILE_SERVER_LAN_URL</code> (default <code>http://192.168.1.1:33333</code>), which has no 25 MB cap. The token lives in <code>~/.config/file_server/token</code>.</p>
 
 <h2>Revoke a machine (on the server)</h2>
 <div class="cmd"><pre>bin/tokens list

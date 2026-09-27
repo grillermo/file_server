@@ -3,6 +3,7 @@
 require "digest"
 require "fileutils"
 require "json"
+require "openssl"
 require "securerandom"
 require "time"
 
@@ -13,6 +14,8 @@ class TokenStore
   PREFIX = "fts_"
   # A digest prefix shorter than this could match many tokens by accident.
   MIN_DIGEST_PREFIX = 8
+  # Token ids in a /health challenge are this long, so they pick exactly one token.
+  TOKEN_ID_LENGTH = 16
 
   def initialize(path)
     @path = path
@@ -36,6 +39,20 @@ class TokenStore
 
   def list
     entries
+  end
+
+  # Proves this server holds the token whose digest starts with +token_id+,
+  # without revealing it: HMAC-SHA256 of +message+ keyed by that digest. The
+  # client, knowing the raw token, recomputes the same value. Nil when the id
+  # matches no token (or more than one).
+  def prove(token_id, message)
+    id = token_id.to_s
+    return nil unless id.match?(/\A\h{#{TOKEN_ID_LENGTH}}\z/)
+
+    found = entries.select { |entry| entry["digest"].start_with?(id) }
+    return nil unless found.size == 1
+
+    OpenSSL::HMAC.hexdigest("SHA256", found.first["digest"], message)
   end
 
   # Removes tokens whose label equals +key+ or whose digest starts with it.

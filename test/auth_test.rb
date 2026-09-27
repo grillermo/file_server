@@ -170,4 +170,63 @@ class AuthTest < Minitest::Test
     assert_includes body.join, "/files/a.txt"
     refute_includes body.join, "mcp.html"
   end
+
+  # --- /health challenge ------------------------------------------------
+
+  NONCE = "0123456789abcdef0123456789abcdef"
+
+  def health(query, host: "192.168.1.1:33333", headers: {})
+    env = Rack::MockRequest.env_for("http://#{host}/health#{query}", method: "GET", "HTTP_HOST" => host)
+    env.merge!(headers)
+    JSON.parse(@app.call(env)[2].join)
+  end
+
+  def token_id(token)
+    Digest::SHA256.hexdigest(token)[0, 16]
+  end
+
+  def expected_proof(token, host)
+    OpenSSL::HMAC.hexdigest("SHA256", Digest::SHA256.hexdigest(token), "#{NONCE}\n#{host}")
+  end
+
+  def test_health_without_a_challenge_only_names_the_service
+    assert_equal({ "service" => "chiq-file-server" }, health(""))
+  end
+
+  def test_health_proves_it_holds_the_token_for_the_dialled_host
+    token = @tokens.issue("laptop")
+
+    body = health("?nonce=#{NONCE}&token_id=#{token_id(token)}")
+
+    assert_equal expected_proof(token, "192.168.1.1:33333"), body["proof"]
+  end
+
+  def test_the_proof_is_bound_to_the_host_header
+    token = @tokens.issue("laptop")
+
+    body = health("?nonce=#{NONCE}&token_id=#{token_id(token)}", host: "files.chiq.me",
+                  headers: { "HTTP_X_FORWARDED_HOST" => "192.168.1.1:33333" })
+
+    refute_equal expected_proof(token, "192.168.1.1:33333"), body["proof"]
+  end
+
+  def test_no_proof_through_the_tunnel
+    token = @tokens.issue("laptop")
+
+    body = health("?nonce=#{NONCE}&token_id=#{token_id(token)}", headers: { "HTTP_CF_CONNECTING_IP" => "1.2.3.4" })
+
+    assert_nil body["proof"]
+  end
+
+  def test_no_proof_for_an_unknown_token
+    @tokens.issue("laptop")
+
+    assert_nil health("?nonce=#{NONCE}&token_id=#{"0" * 16}")["proof"]
+  end
+
+  def test_no_proof_for_a_malformed_nonce
+    token = @tokens.issue("laptop")
+
+    assert_nil health("?nonce=short&token_id=#{token_id(token)}")["proof"]
+  end
 end

@@ -11,6 +11,29 @@ require_relative "lib/token_store"
 class FileServerApp
   # Served from files/ like any upload, but owned by the repo.
   RESERVED_NAMES = ["mcp.html"].freeze
+  SERVICE_ID = "chiq-file-server"
+
+  # Streams a stored file instead of reading it into memory. WEBrick sends
+  # anything with to_path straight from disk; other servers use each.
+  class FileBody
+    CHUNK_SIZE = 64 * 1024
+
+    def initialize(path)
+      @path = path
+    end
+
+    def to_path
+      @path
+    end
+
+    def each
+      File.open(@path, "rb") do |file|
+        while (chunk = file.read(CHUNK_SIZE))
+          yield chunk
+        end
+      end
+    end
+  end
 
   def initialize(otp: Otp.new(notifier: SlackNotifier.from_env),
                  tokens: TokenStore.new(ENV.fetch("TOKENS_FILE") { File.join(__dir__, "tokens.json") }))
@@ -34,6 +57,8 @@ class FileServerApp
       request_otp(req)
     in ["POST", "/auth/verify"]
       verify_otp(req)
+    in ["GET", "/health"]
+      health(req)
     in ["GET", "/"]
       serve_index(req)
     in ["GET", "/index"]
@@ -60,6 +85,23 @@ class FileServerApp
 
   def bearer_token(req)
     req.get_header("HTTP_AUTHORIZATION").to_s[/\ABearer\s+(.+)\z/, 1]
+  end
+
+  # Before sending its token to a LAN address, the MCP asks for proof that the
+  # server there holds that token: ?nonce=<hex>&token_id=<digest prefix>. The
+  # proof is bound to the Host the client dialled, so a device on the LAN
+  # relaying the challenge through the tunnel gets a proof for files.chiq.me,
+  # which the client rejects. The raw Host header is used on purpose:
+  # req.host_with_port trusts X-Forwarded-Host, which a relay could forge.
+  def health(req)
+    body = { service: SERVICE_ID }
+    nonce = req.params["nonce"].to_s
+    host = req.get_header("HTTP_HOST").to_s
+    if nonce.match?(/\A\h{32,64}\z/) && !host.empty? && !req.get_header("HTTP_CF_CONNECTING_IP")
+      proof = @tokens.prove(req.params["token_id"], "#{nonce}\n#{host}")
+      body[:proof] = proof if proof
+    end
+    [200, { "content-type" => "application/json", "cache-control" => "no-store" }, [body.to_json]]
   end
 
   def request_otp(req)
@@ -336,10 +378,13 @@ class FileServerApp
 
     return [200, headers, []] if head
 
-    [200, headers, [File.binread(path)]]
+    [200, headers, FileBody.new(path)]
   end
 
+  # PUBLIC_URL pins links to the tunnel's hostname, so an upload sent straight
+  # to the LAN address still returns a URL that works from anywhere.
   def file_url(req, filename)
-    "#{req.base_url}/files/#{URI::DEFAULT_PARSER.escape(filename)}"
+    base = ENV.fetch("PUBLIC_URL") { req.base_url }.chomp("/")
+    "#{base}/files/#{URI::DEFAULT_PARSER.escape(filename)}"
   end
 end

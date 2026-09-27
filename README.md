@@ -17,6 +17,9 @@ cp .env.example .env
 The app loads `.env` automatically on boot. Set these variables in `.env` or export them in your shell:
 
 - `AUTH_TOKEN` bearer token required for upload requests
+- `PUBLIC_URL` base for returned file URLs (e.g. `https://files.chiq.me`). Without it
+  the URL follows the request's host, so an upload sent to the LAN address would
+  return a LAN-only link.
 
 Example:
 
@@ -43,8 +46,15 @@ bin/rackup -s webrick
 
 ## Notes
 
-- The app exposes `POST /upload`, `POST /receive`, and `GET /files/:name`.
-- Uploads larger than 25 MB are rejected by the app.
+- The app exposes `POST /upload`, `POST /receive`, `GET /files/:name`, and `GET /health`.
+- Files are streamed from disk, never read into memory.
+- `GET /health?nonce=<hex>&token_id=<first 16 hex of sha256(token)>` answers
+  `{"service":"chiq-file-server","proof":"..."}`, where the proof is
+  HMAC-SHA256(key: sha256(token) hex, `"<nonce>\n<Host header>"`). The MCP uses it to
+  confirm the LAN address really is this server before sending its token there.
+  No proof is given through the tunnel (requests carrying `CF-Connecting-IP`).
+- The app has no upload size limit. The Cloudflare tunnel in front of it caps
+  requests at 25 MB, so larger files must be sent to the LAN address directly.
 - Stored filenames use a UUID prefix to avoid collisions.
 
 ## API

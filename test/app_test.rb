@@ -4,6 +4,7 @@ ENV["AUTH_TOKEN"] = "test-token"
 
 require "minitest/autorun"
 require "fileutils"
+require "json"
 require "rack"
 require "rack/mock_request"
 require "tmpdir"
@@ -88,6 +89,18 @@ class AppTest < Minitest::Test
     assert_equal "", body.to_a.join
   end
 
+  def test_get_streams_the_file_from_disk
+    stored("big.bin", "x" * 200_000)
+
+    _, headers, body = get("/files/big.bin")
+
+    assert_equal File.join(@dir, "big.bin"), body.to_path
+    chunks = body.to_enum(:each).to_a
+    assert_operator chunks.size, :>, 1
+    assert_equal "x" * 200_000, chunks.join
+    assert_equal "200000", headers["content-length"]
+  end
+
   def test_head_on_a_missing_file_is_404
     status, = head("/files/nope.txt")
 
@@ -153,6 +166,29 @@ class AppTest < Minitest::Test
 
     name = body.join.split("/files/").last
     assert_match(/\A[0-9a-f-]{36}-a\.txt\z/, name)
+  end
+
+  # --- health ---------------------------------------------------------
+
+  def test_health_identifies_the_service
+    status, headers, body = get("/health")
+
+    assert_equal 200, status
+    assert_equal "application/json", headers["content-type"]
+    assert_equal({ "service" => "chiq-file-server" }, JSON.parse(body.join))
+  end
+
+  # --- public url -------------------------------------------------------
+
+  def test_public_url_overrides_the_request_host
+    ENV["PUBLIC_URL"] = "https://files.chiq.me/"
+    src = write_temp("m.plist", "<plist/>")
+
+    _, _, body = upload(src, "x", query: "?name=awh-manifest.plist")
+
+    assert_equal "https://files.chiq.me/files/awh-manifest.plist", body.join
+  ensure
+    ENV.delete("PUBLIC_URL")
   end
 
   # --- index ------------------------------------------------------------
