@@ -12,13 +12,13 @@ require_relative "../app"
 
 class AuthTest < Minitest::Test
   def setup
-    @dir = Dir.mktmpdir("file-to-s3-auth-")
+    @dir = Dir.mktmpdir("file_server-auth-")
     ENV["FILES_DIR"] = File.join(@dir, "files")
     @now = Time.at(1_000_000)
     @sent = []
     @otp = Otp.new(notifier: ->(text) { @sent << text }, clock: -> { @now })
     @tokens = TokenStore.new(File.join(@dir, "tokens.json"))
-    @app = FileToS3App.new(otp: @otp, tokens: @tokens)
+    @app = FileServerApp.new(otp: @otp, tokens: @tokens)
   end
 
   def teardown
@@ -55,7 +55,7 @@ class AuthTest < Minitest::Test
 
     assert_equal 202, status
     assert_equal "OTP sent to Slack #otp", body.join
-    assert_match(/\Afile_to_s3 OTP: \d{6} \(for laptop\)\z/, @sent.last)
+    assert_match(/\Afile_server OTP: \d{6} \(for laptop\)\z/, @sent.last)
   end
 
   def test_otp_label_is_sanitized
@@ -80,7 +80,7 @@ class AuthTest < Minitest::Test
   end
 
   def test_otp_without_a_webhook_is_503
-    app = FileToS3App.new(otp: Otp.new(notifier: nil), tokens: @tokens)
+    app = FileServerApp.new(otp: Otp.new(notifier: nil), tokens: @tokens)
     status, _, body = app.call(Rack::MockRequest.env_for("http://files.example/auth/otp", method: "POST"))
 
     assert_equal 503, status

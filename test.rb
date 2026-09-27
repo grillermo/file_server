@@ -25,7 +25,7 @@ end
 uri = URI.join(BASE_URL, "/upload")
 boundary = "RubyMultipart#{SecureRandom.hex(8)}"
 filename = "test.rb"
-content = "file-to-s3 upload test at #{Time.now.utc.iso8601}\n"
+content = "file_server upload test at #{Time.now.utc.iso8601}\n"
 
 tempfile = File.open(filename)
 

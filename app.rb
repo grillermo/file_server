@@ -8,7 +8,7 @@ require_relative "lib/otp"
 require_relative "lib/slack_notifier"
 require_relative "lib/token_store"
 
-class FileToS3App
+class FileServerApp
   # Served from files/ like any upload, but owned by the repo.
   RESERVED_NAMES = ["mcp.html"].freeze
 
@@ -182,7 +182,7 @@ class FileToS3App
       401,
       {
         "content-type" => "text/plain; charset=utf-8",
-        "www-authenticate" => %(Bearer realm="file-to-s3")
+        "www-authenticate" => %(Bearer realm="file_server")
       },
       ["Unauthorized"]
     ]
@@ -193,7 +193,7 @@ class FileToS3App
   end
 
   def error_page(error)
-    warn "[file-to-s3] #{error.class}: #{error.message}"
+    warn "[file_server] #{error.class}: #{error.message}"
     text_response(500, error.message)
   end
 

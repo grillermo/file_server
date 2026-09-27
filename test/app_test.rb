@@ -11,9 +11,9 @@ require_relative "../app"
 
 class AppTest < Minitest::Test
   def setup
-    @dir = Dir.mktmpdir("file-to-s3-test-")
+    @dir = Dir.mktmpdir("file_server-test-")
     ENV["FILES_DIR"] = @dir
-    @app = FileToS3App.new
+    @app = FileServerApp.new
   end
 
   def teardown

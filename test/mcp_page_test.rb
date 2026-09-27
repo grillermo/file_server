@@ -18,13 +18,13 @@ class McpPageTest < Minitest::Test
     assert_includes html, "git clone git@github.com:grillermo/agents-configs.git ~/c/agents-configs"
     assert_includes html, "~/c/agents-configs/install.sh"
     assert_includes html, "cd ~/c/agents-configs &amp;&amp; git pull &amp;&amp; ./install.sh"
-    assert_includes html, "claude mcp add --scope user file-to-s3 -- ruby ~/c/agents-configs/mcp/file-to-s3/server.rb"
+    assert_includes html, "claude mcp add --scope user file_server -- ruby ~/c/agents-configs/mcp/file_server/server.rb"
     assert_includes html, "bin/tokens revoke"
   end
 
   def test_page_is_served_as_html
     ENV["FILES_DIR"] = File.dirname(PAGE)
-    status, headers, = FileToS3App.new.call(Rack::MockRequest.env_for("http://files.example/files/mcp.html"))
+    status, headers, = FileServerApp.new.call(Rack::MockRequest.env_for("http://files.example/files/mcp.html"))
 
     assert_equal 200, status
     assert_equal "text/html", headers["content-type"]

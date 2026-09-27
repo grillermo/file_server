@@ -20,7 +20,7 @@ class OtpTest < Minitest::Test
   def test_issue_sends_a_six_digit_code_with_the_label
     @otp.issue("laptop")
 
-    assert_match(/\Afile_to_s3 OTP: \d{6} \(for laptop\)\z/, @sent.last)
+    assert_match(/\Afile_server OTP: \d{6} \(for laptop\)\z/, @sent.last)
   end
 
   def test_correct_code_verifies_exactly_once

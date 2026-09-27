@@ -27,7 +27,7 @@ class Otp
     raise NotConfigured unless @notifier
 
     code = @mutex.synchronize { generate }
-    @notifier.call("file_to_s3 OTP: #{code} (for #{label})")
+    @notifier.call("file_server OTP: #{code} (for #{label})")
   rescue NotConfigured, TooSoon
     raise
   rescue StandardError

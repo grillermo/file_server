@@ -1,4 +1,4 @@
-# file-to-s3
+# file_server
 
 Minimal headless Rack app that accepts a file upload, stores it locally, and serves it back over HTTP.
 
@@ -85,7 +85,7 @@ keep their UUID prefix and never overwrite anything.
 
 ## MCP login
 
-The `file-to-s3` MCP in `agents-configs` logs in with a Slack OTP and then
+The `file_server` MCP in `agents-configs` logs in with a Slack OTP and then
 uploads with a token that never expires. Install instructions are served at
 `/files/mcp.html`.
 

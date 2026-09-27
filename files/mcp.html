@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>file-to-s3 MCP</title>
+<title>file_server MCP</title>
 <style>
   :root { color-scheme: light dark; --bg: #f6f6f7; --card: #fff; --fg: #16161a; --dim: #74747e; --line: #e3e3e7; --accent: #2f6fed; --code: #f0f0f3; }
   @media (prefers-color-scheme: dark) {
@@ -29,7 +29,7 @@
 </head>
 <body>
 <main>
-<h1>file-to-s3 MCP</h1>
+<h1>file_server MCP</h1>
 <p class="dim">Lets Claude Code upload local files to files.chiq.me. Log in once per machine with a code from Slack #otp; the token never expires.</p>
 
 <h2>New machine</h2>
@@ -40,15 +40,15 @@
 <div class="cmd"><pre>cd ~/c/agents-configs &amp;&amp; git pull &amp;&amp; ./install.sh</pre><button type="button">Copy</button></div>
 
 <h2>Without install.sh</h2>
-<div class="cmd"><pre>claude mcp add --scope user file-to-s3 -- ruby ~/c/agents-configs/mcp/file-to-s3/server.rb</pre><button type="button">Copy</button></div>
+<div class="cmd"><pre>claude mcp add --scope user file_server -- ruby ~/c/agents-configs/mcp/file_server/server.rb</pre><button type="button">Copy</button></div>
 
 <h2>Log in and upload</h2>
 <ol>
-  <li>In Claude Code: <code>log in to file_to_s3</code></li>
+  <li>In Claude Code: <code>log in to file_server</code></li>
   <li>Paste the 6-digit code posted to Slack <strong>#otp</strong>.</li>
   <li><code>upload ~/path/to/file</code> — Claude replies with the URL.</li>
 </ol>
-<p class="dim">Needs Ruby 3. Point at another server with <code>FILE_TO_S3_URL</code>. The token lives in <code>~/.config/file-to-s3/token</code>.</p>
+<p class="dim">Needs Ruby 3. Point at another server with <code>FILE_SERVER_URL</code>. The token lives in <code>~/.config/file_server/token</code>.</p>
 
 <h2>Revoke a machine (on the server)</h2>
 <div class="cmd"><pre>bin/tokens list
