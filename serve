@@ -1,3 +1,164 @@
-#!/bin/sh
+#!/usr/bin/env bash
+set -euo pipefail
 
-RACK_ENV="${RACK_ENV:-deployment}" exec bundle exec rackup -p 33333
+APP_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$APP_DIR"
+
+set -a
+# shellcheck source=/dev/null
+[ -f .env ] && . ./.env
+set +a
+
+SESSION='file_server'
+FILES_PORT="${PORT:-33333}"
+DEMOS_PORT="${DEMO_PORT:-33334}"
+export RACK_ENV="${RACK_ENV:-deployment}"
+
+# One detached tmux session "file_server", two panes:
+#   files : the full app (files.chiq.me + LAN) on $FILES_PORT
+#   demos : demos.ru, only the published copies in demos/, on $DEMOS_PORT.
+#           Bound to 127.0.0.1: the only way in is the demos.grillermo.com
+#           tunnel route (cloudflared runs on this host).
+# Re-running restarts both panes in place.
+#
+# tmux panes do NOT inherit this script's environment when a tmux server is
+# already running, so every pane command re-sources .env and carries PATH.
+ENV_SETUP="cd '$APP_DIR' && export PATH='$PATH' RACK_ENV='$RACK_ENV' && set -a && { [ ! -f .env ] || . ./.env; } && set +a"
+
+files_cmd() {
+  echo "$ENV_SETUP && exec bundle exec rackup config.ru -p $FILES_PORT -s webrick"
+}
+
+demos_cmd() {
+  echo "$ENV_SETUP && exec bundle exec rackup demos.ru -o 127.0.0.1 -p $DEMOS_PORT -s webrick"
+}
+
+port_listeners() {
+  lsof -ti "tcp:$1" -sTCP:LISTEN 2>/dev/null || true
+}
+
+# The previous occupant of our ports is always ours (including a foreground
+# run of the old ./serve), so reclaim them before respawning a pane.
+free_port() {
+  local port="$1" pids
+  pids=$(port_listeners "$port")
+  [ -n "$pids" ] || return 0
+
+  echo "==> Port $port still held by PID(s): $(echo "$pids" | tr '\n' ' ')- stopping"
+  # shellcheck disable=SC2086
+  kill $pids 2>/dev/null || true
+  for _ in $(seq 1 20); do
+    sleep 0.5
+    [ -n "$(port_listeners "$port")" ] || return 0
+  done
+
+  pids=$(port_listeners "$port")
+  # shellcheck disable=SC2086
+  [ -z "$pids" ] || kill -9 $pids 2>/dev/null || true
+  sleep 1
+  if [ -n "$(port_listeners "$port")" ]; then
+    echo "ERROR: could not free port $port."
+    return 1
+  fi
+}
+
+# Guarded by has-session: under pipefail a missing session would otherwise
+# abort the script on the very first run.
+pane_for() {
+  tmux has-session -t "$SESSION" 2>/dev/null || return 0
+  tmux list-panes -t "$SESSION" -F '#{pane_title} #{pane_id}' 2>/dev/null \
+    | awk -v t="$1" '$1==t{print $2}'
+}
+
+pane_dead() {
+  [ "$(tmux display-message -p -t "$1" '#{pane_dead}' 2>/dev/null)" = "1" ]
+}
+
+# remain-on-exit keeps a pane that crashed on boot around, holding its output.
+start_pane() {
+  local title="$1" cmd="$2" pid
+  pid=$(pane_for "$title")
+
+  if [ -z "$pid" ]; then
+    if tmux has-session -t "$SESSION" 2>/dev/null; then
+      pid=$(tmux split-window -P -F '#{pane_id}' -t "$SESSION")
+    else
+      tmux new-session -d -s "$SESSION" -n main -x 200 -y 50
+      pid=$(tmux list-panes -t "$SESSION" -F '#{pane_id}' | head -1)
+    fi
+    tmux select-pane -t "$pid" -T "$title"
+  fi
+
+  tmux set-option -t "$SESSION" remain-on-exit on >/dev/null
+  tmux respawn-pane -k -t "$pid" "$cmd"
+  # respawn-pane resets the title on some tmux versions.
+  tmux select-pane -t "$pid" -T "$title"
+  tmux select-layout -t "$SESSION" even-horizontal >/dev/null
+}
+
+dump_pane() {
+  local pid
+  pid=$(pane_for "$1")
+  [ -n "$pid" ] || { echo "(no $1 pane to inspect)"; return 0; }
+  echo "----- last lines of $1 pane -----"
+  tmux capture-pane -p -S -500 -t "$pid" 2>/dev/null | grep -v '^$' | tail -n 25 || true
+  echo "---------------------------------"
+}
+
+files_up() {
+  curl -sf "http://127.0.0.1:$1/health" 2>/dev/null | grep -q '"service":"chiq-file-server"'
+}
+
+http_status() {
+  curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$1$2" 2>/dev/null || true
+}
+
+# The demos app has no health endpoint on purpose. A 404 for both / and
+# /health proves the port answers and that it isn't the full app (which
+# answers 200 to both).
+demos_up() {
+  [ "$(http_status "$1" /)" = "404" ] && [ "$(http_status "$1" /health)" = "404" ]
+}
+
+wait_for() {
+  local title="$1" port="$2" check="$3" pid
+  pid=$(pane_for "$title")
+  echo "==> Waiting for $title on port $port..."
+  for _ in $(seq 1 30); do
+    if "$check" "$port"; then
+      echo "==> $title up (port $port)"
+      return 0
+    fi
+    if [ -z "$pid" ] || pane_dead "$pid"; then
+      echo "ERROR: $title exited during boot."
+      dump_pane "$title"
+      return 1
+    fi
+    sleep 1
+  done
+  echo "ERROR: $title not up after 30s."
+  dump_pane "$title"
+  return 1
+}
+
+restart() {
+  local title="$1" port="$2" cmd="$3" check="$4"
+  echo "==> (Re)starting $title pane (port $port)"
+  free_port "$port" || exit 1
+  start_pane "$title" "$cmd"
+  wait_for "$title" "$port" "$check" || exit 1
+}
+
+restart files "$FILES_PORT" "$(files_cmd)" files_up
+restart demos "$DEMOS_PORT" "$(demos_cmd)" demos_up
+
+echo "==> Session '$SESSION': files:$FILES_PORT, demos:$DEMOS_PORT"
+
+if [ -n "${TMUX:-}" ]; then
+  tmux switch-client -t "$SESSION"
+elif [ -t 1 ]; then
+  echo "==> Attaching to '$SESSION' (detach with Ctrl-b d)"
+  tmux attach-session -t "$SESSION"
+else
+  echo "==> No TTY; not attaching. Run: tmux attach -t $SESSION"
+fi
