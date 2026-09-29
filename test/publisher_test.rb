@@ -22,6 +22,10 @@ class PublisherTest < Minitest::Test
     File.write(File.join(@files, name), content)
   end
 
+  def demos_is_empty?
+    !File.exist?(@demos) || Dir.empty?(@demos)
+  end
+
   def test_publish_copies_the_file_into_demos
     stored("demo.html", "v1")
     @publisher.publish("demo.html")
@@ -70,7 +74,7 @@ class PublisherTest < Minitest::Test
     @publisher.unpublish("nothing.html")
     @publisher.unpublish("")
 
-    refute File.exist?(@demos) && !Dir.empty?(@demos)
+    refute File.exist?(@demos)
   end
 
   def test_publishing_a_missing_file_raises
@@ -83,5 +87,39 @@ class PublisherTest < Minitest::Test
 
     assert_raises(Publisher::NotFound) { @publisher.publish("../secret.txt") }
     refute File.exist?(File.join(@demos, "secret.txt"))
+  end
+
+  def test_symlink_to_outside_files_raises
+    outside = File.join(@dir, "outside.txt")
+    File.write(outside, "secret")
+    File.symlink(outside, File.join(@files, "link.txt"))
+
+    assert_raises(Publisher::NotFound) { @publisher.publish("link.txt") }
+    assert demos_is_empty?
+  end
+
+  def test_nul_bytes_in_publish_raises
+    assert_raises(Publisher::NotFound) { @publisher.publish("a\0b.txt") }
+    assert demos_is_empty?
+  end
+
+  def test_dot_dot_raises
+    assert_raises(Publisher::NotFound) { @publisher.publish("..") }
+    assert demos_is_empty?
+  end
+
+  def test_absolute_path_raises
+    assert_raises(Publisher::NotFound) { @publisher.publish("/etc/passwd") }
+    assert demos_is_empty?
+  end
+
+  def test_published_with_nul_bytes_is_safe_no_op
+    @publisher.published?("a\0b.txt")
+    refute File.exist?(@demos)
+  end
+
+  def test_unpublish_with_nul_bytes_is_safe_no_op
+    @publisher.unpublish("a\0b.txt")
+    refute File.exist?(@demos)
   end
 end
