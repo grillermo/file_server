@@ -46,6 +46,10 @@ class FileServerApp
       start_session(req)
     in ["POST", "/logout"]
       end_session
+    # Cookie-authenticated POSTs rely on SameSite=Strict, which holds only while
+    # files.chiq.me and demos.grillermo.com are different registrable domains (a
+    # demo page can't send the cookie). If they ever share one, add an
+    # Origin/Sec-Fetch-Site check here.
     in ["POST", ("/publish" | "/unpublish") => action]
       return unauthorized unless logged_in?(req) || authenticated?(req)
 
@@ -150,13 +154,19 @@ class FileServerApp
   # Copies into (or deletes from) demos/, which the separate demos process
   # serves. Dotfiles are refused because the demos app never serves them.
   def toggle_publish(req, action)
-    name = File.basename(req.params["name"].to_s)
+    raw = req.params["name"].to_s
+    return unprocessable("invalid name") if raw.include?("\0")
+
+    name = File.basename(raw)
     return unprocessable("#{name} can't be published") unless publishable?(name)
 
     action == "/publish" ? publisher.publish(name) : publisher.unpublish(name)
     redirect("/index")
   rescue Publisher::NotFound
     not_found
+  rescue SystemCallError => e
+    warn "[publish] #{e.class}: #{e.message}"
+    text_response(500, "Could not update demos")
   end
 
   def publishable?(name)

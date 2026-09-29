@@ -183,4 +183,76 @@ class PublishingTest < Minitest::Test
 
     assert_equal 401, request("POST", "/upload", { "file" => file }, cookie: log_in).first
   end
+
+  # --- hardening -------------------------------------------------------
+
+  def test_nul_byte_names_are_422
+    %w[/publish /unpublish].each do |path|
+      status, _, body = request("POST", path, { "name" => "a\0b" }, token: "test-token")
+      assert_equal 422, status, path
+      refute_includes body_of(body), "null byte"
+    end
+  end
+
+  def test_filesystem_errors_do_not_leak_paths
+    boom = Object.new
+    boom.define_singleton_method(:publish) { |_| raise Errno::EACCES, "/secret/tmp/path" }
+    @app.define_singleton_method(:publisher) { boom }
+    stored("demo.html", "v1")
+    status, _, body = nil
+    _, err = capture_io do
+      status, _, body = request("POST", "/publish", { "name" => "demo.html" }, token: "test-token")
+    end
+
+    assert_equal 500, status
+    text = body_of(body)
+    refute_includes text, "/secret"
+    refute_includes text, @dir
+    assert_includes err, "[publish]"
+  end
+
+  def test_unpublish_with_a_bearer_token
+    stored("demo.html", "v1")
+    request("POST", "/publish", { "name" => "demo.html" }, token: "test-token")
+    status, = request("POST", "/unpublish", { "name" => "demo.html" }, token: "test-token")
+
+    assert_equal 303, status
+    refute File.exist?(demo("demo.html"))
+  end
+
+  def test_get_publish_is_404
+    assert_equal 404, request("GET", "/publish", {}, token: "test-token").first
+  end
+
+  def test_unpublish_works_when_the_original_is_gone
+    stored("demo.html", "v1")
+    request("POST", "/publish", { "name" => "demo.html" }, token: "test-token")
+    File.delete(File.join(ENV["FILES_DIR"], "demo.html"))
+
+    assert_equal 303, request("POST", "/unpublish", { "name" => "demo.html" }, token: "test-token").first
+    refute File.exist?(demo("demo.html"))
+  end
+
+  def test_unpublishing_something_not_published_is_303
+    stored("demo.html", "v1")
+    assert_equal 303, request("POST", "/unpublish", { "name" => "demo.html" }, token: "test-token").first
+  end
+
+  def test_republishing_updates_the_copy
+    stored("demo.html", "v1")
+    request("POST", "/publish", { "name" => "demo.html" }, token: "test-token")
+    stored("demo.html", "v2")
+    request("POST", "/publish", { "name" => "demo.html" }, token: "test-token")
+
+    assert_equal "v2", File.read(demo("demo.html"))
+  end
+
+  def test_publishing_a_symlink_to_outside_is_404
+    outside = File.join(@dir, "outside.txt")
+    File.write(outside, "secret")
+    File.symlink(outside, File.join(ENV["FILES_DIR"], "link.html"))
+
+    assert_equal 404, request("POST", "/publish", { "name" => "link.html" }, token: "test-token").first
+    refute File.exist?(demo("link.html"))
+  end
 end
