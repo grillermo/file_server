@@ -6,6 +6,8 @@ require "securerandom"
 require "uri"
 require_relative "lib/file_body"
 require_relative "lib/otp"
+require_relative "lib/publisher"
+require_relative "lib/session"
 require_relative "lib/slack_notifier"
 require_relative "lib/token_store"
 
@@ -15,9 +17,11 @@ class FileServerApp
   SERVICE_ID = "chiq-file-server"
 
   def initialize(otp: Otp.new(notifier: SlackNotifier.from_env),
-                 tokens: TokenStore.new(ENV.fetch("TOKENS_FILE") { File.join(__dir__, "tokens.json") }))
+                 tokens: TokenStore.new(ENV.fetch("TOKENS_FILE") { File.join(__dir__, "tokens.json") }),
+                 session: Session.from_env)
     @otp = otp
     @tokens = tokens
+    @session = session
   end
 
   def call(env)
@@ -36,6 +40,12 @@ class FileServerApp
       request_otp(req)
     in ["POST", "/auth/verify"]
       verify_otp(req)
+    in ["GET", "/login"]
+      serve_login
+    in ["POST", "/auth/session"]
+      start_session(req)
+    in ["POST", "/logout"]
+      end_session
     in ["GET", "/health"]
       health(req)
     in ["GET", "/"]
@@ -104,6 +114,64 @@ class FileServerApp
   def otp_label(req)
     label = req.params["label"].to_s.gsub(/[^\w.\-]/, "")[0, 64]
     label.empty? ? "unknown" : label
+  end
+
+  # The browser session only unlocks the publish toggle; uploads still need a
+  # bearer token.
+  def logged_in?(req)
+    @session.valid?(req.cookies[Session::COOKIE])
+  end
+
+  # Checked before the code is spent, so a missing SESSION_SECRET doesn't burn it.
+  def start_session(req)
+    return text_response(503, "SESSION_SECRET not configured") unless @session.configured?
+    return text_response(401, "Invalid or expired code") unless @otp.verify(req.params["code"].to_s.strip)
+
+    cookie = Rack::Utils.set_cookie_header(
+      Session::COOKIE,
+      value: @session.issue, path: "/", max_age: Session::TTL,
+      httponly: true, secure: true, same_site: :strict
+    )
+    redirect("/index", "set-cookie" => cookie)
+  end
+
+  def end_session
+    redirect("/index", "set-cookie" => Rack::Utils.delete_set_cookie_header(Session::COOKIE, path: "/"))
+  end
+
+  def redirect(location, extra_headers = {})
+    [303, { "location" => location }.merge(extra_headers), []]
+  end
+
+  def serve_login
+    html = <<~HTML
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Log in</title>
+      <style>#{listing_css}</style>
+      </head>
+      <body>
+      <header><h1>Log in</h1><p class="count" id="status">A code will be posted to Slack #otp.</p></header>
+      <main class="login">
+      <button type="button" id="send">Send code</button>
+      <form method="post" action="/auth/session">
+      <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" required placeholder="123456">
+      <button>Log in</button>
+      </form>
+      </main>
+      <script>
+      document.getElementById("send").addEventListener("click", async () => {
+        const res = await fetch("/auth/otp", { method: "POST", body: new URLSearchParams({ label: "browser" }) });
+        document.getElementById("status").textContent = await res.text();
+      });
+      </script>
+      </body>
+      </html>
+    HTML
+    [200, { "content-type" => "text/html; charset=utf-8", "cache-control" => "no-store" }, [html]]
   end
 
   def handle_upload(req)
@@ -336,6 +404,13 @@ class FileServerApp
       .uuid { color: var(--dim); font-size: .8em; }
       .stem { color: var(--accent); }
       .meta { display: block; margin-top: .2rem; color: var(--dim); font-size: .8rem; }
+      button { font: inherit; font-size: .8rem; padding: .3rem .7rem; border: 1px solid var(--line);
+               border-radius: 8px; background: var(--card); color: inherit; }
+      .auth { float: right; margin: .3rem 0 0; font-size: .85rem; color: var(--accent); }
+      .login { max-width: 46rem; margin: 0 auto; display: grid; gap: .75rem; justify-items: start; }
+      .login form { display: flex; gap: .5rem; }
+      .login input { font: inherit; padding: .4rem .7rem; border: 1px solid var(--line); border-radius: 8px;
+                     background: var(--card); color: inherit; }
       @media (min-width: 40rem) { body { padding: 2rem 1.5rem 4rem; } }
     CSS
   end
