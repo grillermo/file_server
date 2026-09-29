@@ -65,8 +65,8 @@ free_port() {
 # Guarded by has-session: under pipefail a missing session would otherwise
 # abort the script on the very first run.
 pane_for() {
-  tmux has-session -t "$SESSION" 2>/dev/null || return 0
-  tmux list-panes -t "$SESSION" -F '#{pane_title} #{pane_id}' 2>/dev/null \
+  tmux has-session -t "=$SESSION" 2>/dev/null || return 0
+  tmux list-panes -t "=$SESSION:" -F '#{pane_title} #{pane_id}' 2>/dev/null \
     | awk -v t="$1" '$1==t{print $2}'
 }
 
@@ -80,20 +80,20 @@ start_pane() {
   pid=$(pane_for "$title")
 
   if [ -z "$pid" ]; then
-    if tmux has-session -t "$SESSION" 2>/dev/null; then
-      pid=$(tmux split-window -P -F '#{pane_id}' -t "$SESSION")
+    if tmux has-session -t "=$SESSION" 2>/dev/null; then
+      pid=$(tmux split-window -P -F '#{pane_id}' -t "=$SESSION:")
     else
       tmux new-session -d -s "$SESSION" -n main -x 200 -y 50
-      pid=$(tmux list-panes -t "$SESSION" -F '#{pane_id}' | head -1)
+      pid=$(tmux list-panes -t "=$SESSION:" -F '#{pane_id}' | head -1)
     fi
     tmux select-pane -t "$pid" -T "$title"
   fi
 
-  tmux set-option -t "$SESSION" remain-on-exit on >/dev/null
+  tmux set-option -t "=$SESSION:" remain-on-exit on >/dev/null
   tmux respawn-pane -k -t "$pid" "$cmd"
   # respawn-pane resets the title on some tmux versions.
   tmux select-pane -t "$pid" -T "$title"
-  tmux select-layout -t "$SESSION" even-horizontal >/dev/null
+  tmux select-layout -t "=$SESSION:" even-horizontal >/dev/null
 }
 
 dump_pane() {
@@ -106,7 +106,9 @@ dump_pane() {
 }
 
 files_up() {
-  curl -sf "http://127.0.0.1:$1/health" 2>/dev/null | grep -q '"service":"chiq-file-server"'
+  local body
+  body=$(curl -sf "http://127.0.0.1:$1/health" 2>/dev/null) || return 1
+  [[ "$body" == *'"service":"chiq-file-server"'* ]]
 }
 
 http_status() {
@@ -114,10 +116,10 @@ http_status() {
 }
 
 # The demos app has no health endpoint on purpose. A 404 for both / and
-# /health proves the port answers and that it isn't the full app (which
-# answers 200 to both).
+# /.probe (a dotfile, which it never serves, so no published file can collide)
+# proves the port answers and that it isn't the full app, whose / answers 200.
 demos_up() {
-  [ "$(http_status "$1" /)" = "404" ] && [ "$(http_status "$1" /health)" = "404" ]
+  [ "$(http_status "$1" /)" = "404" ] && [ "$(http_status "$1" /.probe)" = "404" ]
 }
 
 wait_for() {
@@ -155,10 +157,10 @@ restart demos "$DEMOS_PORT" "$(demos_cmd)" demos_up
 echo "==> Session '$SESSION': files:$FILES_PORT, demos:$DEMOS_PORT"
 
 if [ -n "${TMUX:-}" ]; then
-  tmux switch-client -t "$SESSION"
+  tmux switch-client -t "=$SESSION"
 elif [ -t 1 ]; then
   echo "==> Attaching to '$SESSION' (detach with Ctrl-b d)"
-  tmux attach-session -t "$SESSION"
+  tmux attach-session -t "=$SESSION"
 else
   echo "==> No TTY; not attaching. Run: tmux attach -t $SESSION"
 fi
