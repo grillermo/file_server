@@ -25,10 +25,10 @@ class Publisher
     FileUtils.mkdir_p(@demos_dir)
     temp = File.join(@demos_dir, ".#{SecureRandom.hex(8)}.tmp")
     begin
-      io = File.open(source, File::RDONLY | File::NOFOLLOW)
-      raise NotFound unless io.stat.file?
-      IO.copy_stream(io, temp)
-      io.close
+      File.open(source, File::RDONLY | File::NOFOLLOW) do |io|
+        raise NotFound unless io.stat.file?
+        IO.copy_stream(io, temp)
+      end
       File.rename(temp, File.join(@demos_dir, name))
     rescue Errno::ELOOP, Errno::ENOENT, Errno::EISDIR
       raise NotFound
@@ -53,7 +53,7 @@ class Publisher
     name = name.to_s
     return nil if name.empty? || name.include?("\0")
     name = File.basename(name)
-    return nil if name.empty? || name == "." || name == ".."
+    return nil if name.empty? || name.start_with?(".")
     name
   end
 

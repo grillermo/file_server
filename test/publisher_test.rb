@@ -34,6 +34,14 @@ class PublisherTest < Minitest::Test
     assert @publisher.published?("demo.html")
   end
 
+  def test_publish_refuses_dotfiles
+    stored(".env", "SECRET=1")
+
+    assert_raises(Publisher::NotFound) { @publisher.publish(".env") }
+    assert demos_is_empty?
+    refute @publisher.published?(".env")
+  end
+
   def test_the_copy_is_a_real_file_not_a_link
     stored("demo.html", "v1")
     @publisher.publish("demo.html")

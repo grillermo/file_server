@@ -23,6 +23,8 @@ The app loads `.env` automatically on boot. Set these variables in `.env` or exp
 - `SESSION_SECRET` signs the browser login cookie for the publish toggle
 - `DEMOS_URL` base of the demo links on `/index` (default `https://demos.grillermo.com`)
 - `DEMO_PORT` port of the demos process (default `33334`)
+- `DEMOS_DIR` where published copies live (default `./demos`). The main app and the
+  demos process must resolve to the same directory, and it must differ from `FILES_DIR`.
 
 Example:
 
@@ -66,9 +68,13 @@ curl -X POST https://files.chiq.me/unpublish -H "Authorization: Bearer $AUTH_TOK
 - Sessions are stateless: logging out only clears the browser's cookie. Rotate
   `SESSION_SECRET` to revoke every session.
 - A published file is served with full script power on the demos origin, so
-  published HTML/JS can fetch other published files. The `SameSite=Strict`
-  protection of the toggle assumes files.chiq.me and demos.grillermo.com stay
-  different registrable domains.
+  published HTML/JS can fetch other published files.
+- `SameSite=Strict` keeps other sites from using the login cookie, including the
+  demos domain as long as it stays a different registrable domain from files.chiq.me.
+  But HTML you upload and open on files.chiq.me/files/* runs on the same origin as
+  `/publish`, so a page opened there while logged in could POST to it. Only upload
+  HTML you trust. Impact is limited: every stored file is already listed on the
+  public `/index`, and publishing needs a valid session.
 
 ## Notes
 
