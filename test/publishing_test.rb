@@ -106,4 +106,81 @@ class PublishingTest < Minitest::Test
     assert_equal 303, status
     assert_includes headers["set-cookie"], "max-age=0"
   end
+
+  # --- publish / unpublish ---------------------------------------------
+
+  def test_publish_with_a_session_copies_the_file
+    stored("demo.html", "v1")
+    status, headers, = request("POST", "/publish", { "name" => "demo.html" }, cookie: log_in)
+
+    assert_equal 303, status
+    assert_equal "/index", headers["location"]
+    assert_equal "v1", File.read(demo("demo.html"))
+  end
+
+  def test_publish_with_a_bearer_token
+    stored("demo.html", "v1")
+    status, = request("POST", "/publish", { "name" => "demo.html" }, token: "test-token")
+
+    assert_equal 303, status
+    assert File.file?(demo("demo.html"))
+  end
+
+  def test_publish_is_refused_without_auth
+    stored("demo.html", "v1")
+
+    [nil, "garbage", "#{@now.to_i + 999}.#{"0" * 64}"].each do |cookie|
+      assert_equal 401, request("POST", "/publish", { "name" => "demo.html" }, cookie: cookie).first
+    end
+    refute File.exist?(demo("demo.html"))
+  end
+
+  def test_an_expired_session_cannot_publish
+    stored("demo.html", "v1")
+    cookie = log_in
+    @now += Session::TTL
+
+    assert_equal 401, request("POST", "/publish", { "name" => "demo.html" }, cookie: cookie).first
+  end
+
+  def test_unpublish_removes_the_copy_and_keeps_the_original
+    stored("demo.html", "v1")
+    cookie = log_in
+    request("POST", "/publish", { "name" => "demo.html" }, cookie: cookie)
+    status, = request("POST", "/unpublish", { "name" => "demo.html" }, cookie: cookie)
+
+    assert_equal 303, status
+    refute File.exist?(demo("demo.html"))
+    assert File.file?(File.join(ENV["FILES_DIR"], "demo.html"))
+  end
+
+  def test_unpublish_is_refused_without_auth
+    stored("demo.html", "v1")
+    request("POST", "/publish", { "name" => "demo.html" }, token: "test-token")
+
+    assert_equal 401, request("POST", "/unpublish", { "name" => "demo.html" }).first
+    assert File.file?(demo("demo.html"))
+  end
+
+  def test_publishing_a_missing_file_is_404
+    assert_equal 404, request("POST", "/publish", { "name" => "missing.html" }, token: "test-token").first
+  end
+
+  def test_reserved_and_dotfile_names_cannot_be_published
+    stored("mcp.html", "x")
+    stored(".env", "x")
+
+    ["mcp.html", "MCP.HTML", ".env", ""].each do |name|
+      assert_equal 422, request("POST", "/publish", { "name" => name }, token: "test-token").first, name
+    end
+    refute File.exist?(ENV["DEMOS_DIR"]) && !Dir.empty?(ENV["DEMOS_DIR"])
+  end
+
+  def test_a_session_cookie_does_not_authorize_uploads
+    src = File.join(@dir, "src.txt")
+    File.write(src, "hello")
+    file = Rack::Multipart::UploadedFile.new(src, "text/plain", true, filename: "src.txt")
+
+    assert_equal 401, request("POST", "/upload", { "file" => file }, cookie: log_in).first
+  end
 end

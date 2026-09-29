@@ -46,6 +46,10 @@ class FileServerApp
       start_session(req)
     in ["POST", "/logout"]
       end_session
+    in ["POST", ("/publish" | "/unpublish") => action]
+      return unauthorized unless logged_in?(req) || authenticated?(req)
+
+      toggle_publish(req, action)
     in ["GET", "/health"]
       health(req)
     in ["GET", "/"]
@@ -141,6 +145,31 @@ class FileServerApp
 
   def redirect(location, extra_headers = {})
     [303, { "location" => location }.merge(extra_headers), []]
+  end
+
+  # Copies into (or deletes from) demos/, which the separate demos process
+  # serves. Dotfiles are refused because the demos app never serves them.
+  def toggle_publish(req, action)
+    name = File.basename(req.params["name"].to_s)
+    return unprocessable("#{name} can't be published") unless publishable?(name)
+
+    action == "/publish" ? publisher.publish(name) : publisher.unpublish(name)
+    redirect("/index")
+  rescue Publisher::NotFound
+    not_found
+  end
+
+  def publishable?(name)
+    !name.empty? && !name.start_with?(".") && !RESERVED_NAMES.include?(name.downcase)
+  end
+
+  def publisher
+    Publisher.new(files_dir: files_dir, demos_dir: demos_dir)
+  end
+
+  # Overridable like files_dir. Must match the demos process's DEMOS_DIR.
+  def demos_dir
+    ENV.fetch("DEMOS_DIR") { File.join(__dir__, "demos") }
   end
 
   def serve_login
