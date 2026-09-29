@@ -33,8 +33,11 @@ class Session
   def valid?(value)
     return false unless configured?
 
-    expires_at, mac = value.to_s.split(".", 2)
-    return false unless expires_at&.match?(/\A\d+\z/) && mac
+    value = value.to_s
+    return false unless value.valid_encoding?
+
+    expires_at, mac = value.split(".", 2)
+    return false unless expires_at&.match?(/\A\d+\z/) && !mac.to_s.empty?
 
     Rack::Utils.secure_compare(sign(expires_at), mac) && expires_at.to_i > @clock.call.to_i
   end

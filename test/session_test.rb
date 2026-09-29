@@ -33,7 +33,7 @@ class SessionTest < Minitest::Test
   end
 
   def test_garbage_is_rejected
-    [nil, "", "abc", "123", "123.", ".abc", "x.y"].each do |value|
+    [nil, "", "abc", "123", "123.", ".abc", "x.y", "\xff", "1.\xff"].each do |value|
       refute @session.valid?(value), value.inspect
     end
   end
