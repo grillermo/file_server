@@ -1,3 +1,4 @@
+require "date"
 require "dotenv/load"
 require "erb"
 require "fileutils"
@@ -366,8 +367,7 @@ class FileServerApp
   def serve_listing(req)
     logged_in = logged_in?(req)
     entries = listing_entries
-    rows = entries.map { |name, size, mtime| listing_row(req, name, size, mtime, logged_in) }.join("\n")
-    body = rows.empty? ? %(<p class="empty">No files uploaded yet.</p>) : %(<ul class="files">\n#{rows}\n</ul>)
+    body = entries.empty? ? %(<p class="empty">No files uploaded yet.</p>) : timeline_groups(req, entries, logged_in)
 
     html = <<~HTML
       <!DOCTYPE html>
@@ -388,6 +388,63 @@ class FileServerApp
     [200, { "content-type" => "text/html; charset=utf-8", "cache-control" => "private, no-store", "vary" => "Cookie" }, [html]]
   end
 
+  TIMELINE_BASE = [173, 27, 26].freeze
+  TIMELINE_END = [205, 196, 196].freeze
+  TIMELINE_MAX_MONTHS = 6
+  # Buckets 0..6 are day/week ranges; 7.. are whole months ago (1 .. 6+).
+  TIMELINE_DAY_LABELS = ["Today", "1 day ago", "2 days ago", "A few days ago",
+                         "1 week ago", "2 weeks ago", "3 weeks ago"].freeze
+  TIMELINE_LAST_BUCKET = TIMELINE_DAY_LABELS.size - 1 + TIMELINE_MAX_MONTHS
+
+  def age_bucket(mtime, now = Time.now)
+    days = (now.to_date - mtime.to_date).to_i
+    case days
+    when ..0 then 0
+    when 1, 2 then days
+    when 3..6 then 3
+    when 7..13 then 4
+    when 14..20 then 5
+    when 21..27 then 6
+    else
+      months = (now.year - mtime.year) * 12 + (now.month - mtime.month)
+      TIMELINE_DAY_LABELS.size - 1 + months.clamp(1, TIMELINE_MAX_MONTHS)
+    end
+  end
+
+  def bucket_label(bucket)
+    return TIMELINE_DAY_LABELS[bucket] if bucket < TIMELINE_DAY_LABELS.size
+
+    months = bucket - TIMELINE_DAY_LABELS.size + 1
+    return "#{TIMELINE_MAX_MONTHS}+ months ago" if months == TIMELINE_MAX_MONTHS
+
+    "#{months} month#{"s" if months > 1} ago"
+  end
+
+  def bucket_color(bucket)
+    t = bucket.to_f / TIMELINE_LAST_BUCKET
+    r, g, b = TIMELINE_BASE.zip(TIMELINE_END).map { |from, to| (from + (to - from) * t).round }
+    "rgb(#{r}, #{g}, #{b})"
+  end
+
+  # Consecutive entries (already newest first) sharing a month bucket get one
+  # sticky marker pill, and each row gets a dot on the timeline rail.
+  def timeline_groups(req, entries, logged_in)
+    entries.chunk_while { |a, b| age_bucket(a[2]) == age_bucket(b[2]) }.map do |group|
+      range = age_bucket(group.first[2])
+      color = bucket_color(range)
+      rows = group.map { |name, size, mtime| listing_row(req, name, size, mtime, logged_in) }.join("\n")
+
+      <<~GROUP
+        <section class="group" style="--marker: #{color}">
+        <div class="marker"><span class="pill">#{bucket_label(range)}</span></div>
+        <ul class="files">
+        #{rows}
+        </ul>
+        </section>
+      GROUP
+    end.join("\n")
+  end
+
   # Names carry a UUID prefix; the prefix is dimmed rather than dropped so the
   # displayed name always matches the stored one — nothing is truncated.
   def listing_row(req, name, size, mtime, logged_in)
@@ -398,7 +455,7 @@ class FileServerApp
     ].compact.join
 
     <<~ROW
-      <li><a href="#{escape_html(file_url(req, name))}">
+      <li><span class="rail"></span><a href="#{escape_html(file_url(req, name))}">
       <span class="name">#{label}</span>
       <span class="meta">#{human_size(size)} &middot; #{mtime.strftime("%Y-%m-%d %H:%M")}</span>
       </a>#{publish_controls(name) if logged_in && publishable?(name)}</li>
@@ -466,10 +523,23 @@ class FileServerApp
       h1 { font-size: 1.25rem; margin: .25rem 0; }
       .count { margin: 0; color: var(--dim); font-size: .85rem; }
       .empty { max-width: 46rem; margin: 2rem auto; color: var(--dim); }
-      ul.files { list-style: none; max-width: 46rem; margin: 0 auto; padding: 0;
-                 background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-      ul.files li + li { border-top: 1px solid var(--line); }
-      ul.files a { display: block; padding: .8rem 1rem; color: inherit; text-decoration: none; }
+      .group { max-width: 46rem; margin: 0 auto; }
+      .marker { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: .5rem;
+                padding: .75rem 0 .4rem; background: color-mix(in srgb, var(--bg) 95%, transparent);
+                backdrop-filter: blur(6px); }
+      .marker::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+      .pill { padding: .1rem .65rem; border-radius: 999px; background: var(--marker); color: #fff;
+              font-size: .7rem; font-weight: 600; }
+      ul.files { list-style: none; margin: 0; padding: 0; }
+      ul.files li { display: flex; gap: .75rem; }
+      .rail { position: relative; flex: 0 0 1.25rem; }
+      .rail::before { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px;
+                      transform: translateX(-50%); background: var(--line); }
+      .rail::after { content: ""; position: absolute; top: 1.4rem; left: 50%; width: .65rem; height: .65rem;
+                     transform: translateX(-50%); border-radius: 50%; background: var(--marker);
+                     border: 2px solid var(--bg); box-sizing: content-box; }
+      ul.files a { flex: 1; min-width: 0; display: block; margin: .25rem 0; padding: .8rem 1rem; color: inherit;
+                   text-decoration: none; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
       ul.files a:active { background: var(--line); }
       /* Names wrap in full — never clipped, never ellipsised. */
       .name { display: block; overflow-wrap: anywhere; word-break: break-word; hyphens: none; }
