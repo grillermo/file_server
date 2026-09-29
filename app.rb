@@ -4,6 +4,7 @@ require "json"
 require "rack"
 require "securerandom"
 require "uri"
+require_relative "lib/file_body"
 require_relative "lib/otp"
 require_relative "lib/slack_notifier"
 require_relative "lib/token_store"
@@ -12,28 +13,6 @@ class FileServerApp
   # Served from files/ like any upload, but owned by the repo.
   RESERVED_NAMES = ["mcp.html"].freeze
   SERVICE_ID = "chiq-file-server"
-
-  # Streams a stored file instead of reading it into memory. WEBrick sends
-  # anything with to_path straight from disk; other servers use each.
-  class FileBody
-    CHUNK_SIZE = 64 * 1024
-
-    def initialize(path)
-      @path = path
-    end
-
-    def to_path
-      @path
-    end
-
-    def each
-      File.open(@path, "rb") do |file|
-        while (chunk = file.read(CHUNK_SIZE))
-          yield chunk
-        end
-      end
-    end
-  end
 
   def initialize(otp: Otp.new(notifier: SlackNotifier.from_env),
                  tokens: TokenStore.new(ENV.fetch("TOKENS_FILE") { File.join(__dir__, "tokens.json") }))
@@ -370,12 +349,7 @@ class FileServerApp
 
     return not_found unless File.file?(path)
 
-    content_type = Rack::Mime.mime_type(File.extname(safe_name), "application/octet-stream")
-    headers = {
-      "content-type" => content_type,
-      "content-length" => File.size(path).to_s
-    }
-
+    headers = FileBody.headers(path)
     return [200, headers, []] if head
 
     [200, headers, FileBody.new(path)]
