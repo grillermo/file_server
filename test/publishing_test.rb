@@ -297,9 +297,37 @@ class PublishingTest < Minitest::Test
   end
 
   def test_reserved_files_get_no_toggle
+    stored("ok.html", "x")
     stored("mcp.html", "x")
+    stored(".env", "x")
     html = body_of(request("GET", "/index", cookie: @session.issue)[2])
 
+    assert_includes html, %(value="ok.html")
+    assert_includes html, "mcp.html"
     refute_includes html, %(value="mcp.html")
+    refute_includes html, %(value=".env")
+  end
+
+  def test_listing_is_not_cacheable_and_varies_by_cookie
+    headers = request("GET", "/index")[1]
+
+    assert_equal "private, no-store", headers["cache-control"]
+    assert_equal "Cookie", headers["vary"]
+  end
+
+  def test_demo_url_percent_encodes_names
+    stored("my demo?.html", "v1")
+    request("POST", "/publish", { "name" => "my demo?.html" }, token: "test-token")
+    html = body_of(request("GET", "/index", cookie: @session.issue)[2])
+
+    assert_includes html, %(href="https://demos.grillermo.com/my%20demo%3F.html")
+  end
+
+  def test_toggle_buttons_are_labelled
+    stored("demo.html", "v1")
+    html = body_of(request("GET", "/index", cookie: @session.issue)[2])
+
+    assert_includes html, %(aria-label="Make demo.html public")
+    assert_includes html, %(<button type="submit">Log out</button>)
   end
 end

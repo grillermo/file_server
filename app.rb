@@ -1,4 +1,5 @@
 require "dotenv/load"
+require "erb"
 require "fileutils"
 require "json"
 require "rack"
@@ -384,7 +385,7 @@ class FileServerApp
       </html>
     HTML
 
-    [200, { "content-type" => "text/html; charset=utf-8", "cache-control" => "no-cache" }, [html]]
+    [200, { "content-type" => "text/html; charset=utf-8", "cache-control" => "private, no-store", "vary" => "Cookie" }, [html]]
   end
 
   # Names carry a UUID prefix; the prefix is dimmed rather than dropped so the
@@ -407,7 +408,7 @@ class FileServerApp
   def auth_control(logged_in)
     return %(<a class="auth" href="/login">Log in</a>) unless logged_in
 
-    %(<form class="auth" method="post" action="/logout"><button>Log out</button></form>)
+    %(<form class="auth" method="post" action="/logout"><button type="submit">Log out</button></form>)
   end
 
   # A form beside the row's link (a form can't sit inside an <a>). Posts to
@@ -416,21 +417,23 @@ class FileServerApp
     if publisher.published?(name)
       url = escape_html(demo_url(name))
       action, label, link = "/unpublish", "Public — unpublish", %(<a class="demo" href="#{url}">#{url}</a>)
+      aria = "Unpublish #{escape_html(name)}"
     else
       action, label, link = "/publish", "Make public", ""
+      aria = "Make #{escape_html(name)} public"
     end
 
     <<~FORM
       <form class="publish" method="post" action="#{action}">
       <input type="hidden" name="name" value="#{escape_html(name)}">
-      <button>#{label}</button>#{link}
+      <button type="submit" aria-label="#{aria}">#{label}</button>#{link}
       </form>
     FORM
   end
 
   def demo_url(name)
     base = ENV.fetch("DEMOS_URL", "https://demos.grillermo.com").chomp("/")
-    "#{base}/#{URI::DEFAULT_PARSER.escape(name)}"
+    "#{base}/#{ERB::Util.url_encode(name)}"
   end
 
   UNITS = ["B", "KB", "MB", "GB"].freeze
