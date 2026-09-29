@@ -7,3 +7,4 @@ files/*
 !files/mcp.html
 tokens.json
 .worktrees/
+demos/

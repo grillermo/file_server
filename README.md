@@ -20,6 +20,9 @@ The app loads `.env` automatically on boot. Set these variables in `.env` or exp
 - `PUBLIC_URL` base for returned file URLs (e.g. `https://files.chiq.me`). Without it
   the URL follows the request's host, so an upload sent to the LAN address would
   return a LAN-only link.
+- `SESSION_SECRET` signs the browser login cookie for the publish toggle
+- `DEMOS_URL` base of the demo links on `/index` (default `https://demos.grillermo.com`)
+- `DEMO_PORT` port of the demos process (default `33334`)
 
 Example:
 
@@ -30,23 +33,47 @@ AUTH_TOKEN=replace-with-a-long-random-token
 ## Run
 
 ```sh
-bin/rackup -s webrick
+./serve
 ```
 
-The service listens on http://localhost:33333
+`./serve` starts a tmux session named `file_server` with two panes: `files`
+(the full app on http://localhost:33333, or `$PORT`) and `demos` (the demos
+process on 127.0.0.1:33334, or `$DEMO_PORT`). Re-running it restarts both panes,
+and first stops whatever is listening on those two ports. Use
+`tmux attach -t file_server` to see them.
 
-The local `bin/rackup` wrapper defaults to port `33333`. You can still override it with `PORT=4567 bin/rackup -s webrick` or `bin/rackup -p 4567 -s webrick`.
+## demos.grillermo.com
 
-If `bin/rackup` is missing, regenerate the local Bundler binstub once:
+A file is public on demos.grillermo.com only while a copy of it sits in `demos/`
+(git-ignored). Everything else stays on files.chiq.me.
+
+On `/index`, click "Log in" (a Slack OTP, same as the MCP login), then use
+"Make public" beside a file; it turns into "Public — unpublish" with the demo link.
+From a script:
 
 ```sh
-bundle binstub rackup --force
-bin/rackup -s webrick
+curl -X POST https://files.chiq.me/publish -H "Authorization: Bearer $AUTH_TOKEN" -d name=<stored-name>
+curl -X POST https://files.chiq.me/unpublish -H "Authorization: Bearer $AUTH_TOKEN" -d name=<stored-name>
 ```
+
+- The copy does not follow later overwrites of the original; publish again to refresh it.
+- The demos process (`demos.ru`) serves only `GET`/`HEAD /<name>` for files in
+  `demos/` and answers 404 to everything else. It listens on 127.0.0.1 only, so
+  the Cloudflare route for demos.grillermo.com must point at `http://localhost:33334`.
+- The login cookie (`fs_session`, 30 days, signed with `SESSION_SECRET`) is `Secure`,
+  so browser login only works over the HTTPS origin (files.chiq.me), not plain
+  `http://<lan-ip>`. Without `SESSION_SECRET`, login returns 503.
+- Sessions are stateless: logging out only clears the browser's cookie. Rotate
+  `SESSION_SECRET` to revoke every session.
+- A published file is served with full script power on the demos origin, so
+  published HTML/JS can fetch other published files. The `SameSite=Strict`
+  protection of the toggle assumes files.chiq.me and demos.grillermo.com stay
+  different registrable domains.
 
 ## Notes
 
-- The app exposes `POST /upload`, `POST /receive`, `GET /files/:name`, and `GET /health`.
+- The app exposes `POST /upload`, `POST /receive`, `GET /files/:name`, `GET /health`,
+  `GET /login`, `POST /auth/session`, `POST /logout`, `POST /publish`, and `POST /unpublish`.
 - Files are streamed from disk, never read into memory.
 - `GET /health?nonce=<hex>&token_id=<first 16 hex of sha256(token)>` answers
   `{"service":"chiq-file-server","proof":"..."}`, where the proof is
