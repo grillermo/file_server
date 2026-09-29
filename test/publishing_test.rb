@@ -255,4 +255,51 @@ class PublishingTest < Minitest::Test
     assert_equal 404, request("POST", "/publish", { "name" => "link.html" }, token: "test-token").first
     refute File.exist?(demo("link.html"))
   end
+
+  # --- listing ---------------------------------------------------------
+
+  def test_listing_logged_out_offers_login_and_no_toggle
+    stored("demo.html", "v1")
+    html = body_of(request("GET", "/index")[2])
+
+    assert_includes html, %(href="/login")
+    refute_includes html, "/publish"
+  end
+
+  def test_listing_logged_in_offers_publish_and_logout
+    stored("demo.html", "v1")
+    html = body_of(request("GET", "/index", cookie: @session.issue)[2])
+
+    assert_includes html, %(action="/publish")
+    assert_includes html, %(name="name" value="demo.html")
+    assert_includes html, %(action="/logout")
+    refute_includes html, "demos.grillermo.com"
+  end
+
+  def test_listing_shows_the_demo_url_and_unpublish_for_published_files
+    stored("demo.html", "v1")
+    request("POST", "/publish", { "name" => "demo.html" }, token: "test-token")
+    html = body_of(request("GET", "/index", cookie: @session.issue)[2])
+
+    assert_includes html, %(action="/unpublish")
+    assert_includes html, %(href="https://demos.grillermo.com/demo.html")
+  end
+
+  def test_demos_url_is_configurable
+    ENV["DEMOS_URL"] = "https://demos.example/"
+    stored("demo.html", "v1")
+    request("POST", "/publish", { "name" => "demo.html" }, token: "test-token")
+    html = body_of(request("GET", "/index", cookie: @session.issue)[2])
+
+    assert_includes html, %(href="https://demos.example/demo.html")
+  ensure
+    ENV.delete("DEMOS_URL")
+  end
+
+  def test_reserved_files_get_no_toggle
+    stored("mcp.html", "x")
+    html = body_of(request("GET", "/index", cookie: @session.issue)[2])
+
+    refute_includes html, %(value="mcp.html")
+  end
 end

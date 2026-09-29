@@ -363,8 +363,9 @@ class FileServerApp
   end
 
   def serve_listing(req)
+    logged_in = logged_in?(req)
     entries = listing_entries
-    rows = entries.map { |name, size, mtime| listing_row(req, name, size, mtime) }.join("\n")
+    rows = entries.map { |name, size, mtime| listing_row(req, name, size, mtime, logged_in) }.join("\n")
     body = rows.empty? ? %(<p class="empty">No files uploaded yet.</p>) : %(<ul class="files">\n#{rows}\n</ul>)
 
     html = <<~HTML
@@ -377,7 +378,7 @@ class FileServerApp
       <style>#{listing_css}</style>
       </head>
       <body>
-      <header><h1>Files</h1><p class="count">#{entries.size} #{entries.size == 1 ? "file" : "files"}</p></header>
+      <header>#{auth_control(logged_in)}<h1>Files</h1><p class="count">#{entries.size} #{entries.size == 1 ? "file" : "files"}</p></header>
       #{body}
       </body>
       </html>
@@ -388,7 +389,7 @@ class FileServerApp
 
   # Names carry a UUID prefix; the prefix is dimmed rather than dropped so the
   # displayed name always matches the stored one — nothing is truncated.
-  def listing_row(req, name, size, mtime)
+  def listing_row(req, name, size, mtime, logged_in)
     prefix, rest = name.match(/\A([0-9a-f-]{36}-)(.+)\z/m)&.captures || [nil, name]
     label = [
       prefix && %(<span class="uuid">#{escape_html(prefix)}</span>),
@@ -399,8 +400,37 @@ class FileServerApp
       <li><a href="#{escape_html(file_url(req, name))}">
       <span class="name">#{label}</span>
       <span class="meta">#{human_size(size)} &middot; #{mtime.strftime("%Y-%m-%d %H:%M")}</span>
-      </a></li>
+      </a>#{publish_controls(name) if logged_in && publishable?(name)}</li>
     ROW
+  end
+
+  def auth_control(logged_in)
+    return %(<a class="auth" href="/login">Log in</a>) unless logged_in
+
+    %(<form class="auth" method="post" action="/logout"><button>Log out</button></form>)
+  end
+
+  # A form beside the row's link (a form can't sit inside an <a>). Posts to
+  # /publish or /unpublish, which redirect back here.
+  def publish_controls(name)
+    if publisher.published?(name)
+      url = escape_html(demo_url(name))
+      action, label, link = "/unpublish", "Public — unpublish", %(<a class="demo" href="#{url}">#{url}</a>)
+    else
+      action, label, link = "/publish", "Make public", ""
+    end
+
+    <<~FORM
+      <form class="publish" method="post" action="#{action}">
+      <input type="hidden" name="name" value="#{escape_html(name)}">
+      <button>#{label}</button>#{link}
+      </form>
+    FORM
+  end
+
+  def demo_url(name)
+    base = ENV.fetch("DEMOS_URL", "https://demos.grillermo.com").chomp("/")
+    "#{base}/#{URI::DEFAULT_PARSER.escape(name)}"
   end
 
   UNITS = ["B", "KB", "MB", "GB"].freeze
@@ -450,6 +480,8 @@ class FileServerApp
       .login form { display: flex; gap: .5rem; }
       .login input { font: inherit; padding: .4rem .7rem; border: 1px solid var(--line); border-radius: 8px;
                      background: var(--card); color: inherit; }
+      form.publish { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: 0; padding: 0 1rem .8rem; }
+      ul.files a.demo { display: inline; padding: 0; color: var(--accent); font-size: .8rem; overflow-wrap: anywhere; }
       @media (min-width: 40rem) { body { padding: 2rem 1.5rem 4rem; } }
     CSS
   end
