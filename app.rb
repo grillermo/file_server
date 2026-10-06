@@ -339,7 +339,8 @@ class FileServerApp
     filename = File.directory?(files_dir) ? latest_filename : nil
     return [200, { "content-type" => "text/html; charset=utf-8" }, ["<html><body><p>No file uploaded yet.</p></body></html>"]] unless filename
 
-    url = file_url(req, filename)
+    # Relative, not file_url: a browser on the LAN address should stay there.
+    url = "/files/#{URI::DEFAULT_PARSER.escape(filename)}"
     html = <<~HTML
       <!DOCTYPE html>
       <html>

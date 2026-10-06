@@ -191,6 +191,18 @@ class AppTest < Minitest::Test
     ENV.delete("PUBLIC_URL")
   end
 
+  def test_root_stays_on_the_host_it_was_opened_from
+    ENV["PUBLIC_URL"] = "https://files.chiq.me"
+    stored("a.txt", "one")
+
+    _, _, body = get("/")
+
+    assert_includes body.join, %(window.location.href = "/files/a.txt")
+    refute_includes body.join, "files.chiq.me"
+  ensure
+    ENV.delete("PUBLIC_URL")
+  end
+
   # --- index ------------------------------------------------------------
 
   def test_index_lists_every_file
