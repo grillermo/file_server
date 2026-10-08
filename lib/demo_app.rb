@@ -3,7 +3,7 @@
 require "rack"
 require_relative "file_body"
 
-# Everything demos.grillermo.com can do: GET or HEAD one file from the demos
+# Everything files.grillermo.com can do: GET or HEAD one file from the demos
 # directory. It runs as its own process and requires nothing from app.rb, so
 # there is no upload, login or listing code to reach through it. Anything it
 # can't serve — including "/" — gets the same plain 404, so visitors can't

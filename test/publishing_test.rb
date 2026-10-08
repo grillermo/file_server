@@ -273,7 +273,7 @@ class PublishingTest < Minitest::Test
     assert_includes html, %(action="/publish")
     assert_includes html, %(name="name" value="demo.html")
     assert_includes html, %(action="/logout")
-    refute_includes html, "demos.grillermo.com"
+    refute_includes html, "files.grillermo.com"
   end
 
   def test_listing_shows_the_demo_url_and_unpublish_for_published_files
@@ -282,7 +282,7 @@ class PublishingTest < Minitest::Test
     html = body_of(request("GET", "/index", cookie: @session.issue)[2])
 
     assert_includes html, %(action="/unpublish")
-    assert_includes html, %(href="https://demos.grillermo.com/demo.html")
+    assert_includes html, %(href="https://files.grillermo.com/demo.html")
   end
 
   def test_demos_url_is_configurable
@@ -320,7 +320,7 @@ class PublishingTest < Minitest::Test
     request("POST", "/publish", { "name" => "my demo?.html" }, token: "test-token")
     html = body_of(request("GET", "/index", cookie: @session.issue)[2])
 
-    assert_includes html, %(href="https://demos.grillermo.com/my%20demo%3F.html")
+    assert_includes html, %(href="https://files.grillermo.com/my%20demo%3F.html")
   end
 
   def test_toggle_buttons_are_labelled

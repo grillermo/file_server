@@ -21,7 +21,7 @@ The app loads `.env` automatically on boot. Set these variables in `.env` or exp
   the URL follows the request's host, so an upload sent to the LAN address would
   return a LAN-only link.
 - `SESSION_SECRET` signs the browser login cookie for the publish toggle
-- `DEMOS_URL` base of the demo links on `/index` (default `https://demos.grillermo.com`)
+- `DEMOS_URL` base of the demo links on `/index` (default `https://files.grillermo.com`)
 - `DEMO_PORT` port of the demos process (default `33334`)
 - `DEMOS_DIR` where published copies live (default `./demos`). The main app and the
   demos process must resolve to the same directory, and it must differ from `FILES_DIR`.
@@ -44,9 +44,9 @@ process on 127.0.0.1:33334, or `$DEMO_PORT`). Re-running it restarts both panes,
 and first stops whatever is listening on those two ports. Use
 `tmux attach -t file_server` to see them.
 
-## demos.grillermo.com
+## files.grillermo.com
 
-A file is public on demos.grillermo.com only while a copy of it sits in `demos/`
+A file is public on files.grillermo.com only while a copy of it sits in `demos/`
 (git-ignored). Everything else stays on files.chiq.me.
 
 On `/index`, click "Log in" (a Slack OTP, same as the MCP login), then use
@@ -61,7 +61,7 @@ curl -X POST https://files.chiq.me/unpublish -H "Authorization: Bearer $AUTH_TOK
 - The copy does not follow later overwrites of the original; publish again to refresh it.
 - The demos process (`demos.ru`) serves only `GET`/`HEAD /<name>` for files in
   `demos/` and answers 404 to everything else. It listens on 127.0.0.1 only, so
-  the Cloudflare route for demos.grillermo.com must point at `http://localhost:33334`.
+  the Cloudflare route for files.grillermo.com must point at `http://localhost:33334`.
 - The login cookie (`fs_session`, 30 days, signed with `SESSION_SECRET`) is `Secure`,
   so browser login only works over the HTTPS origin (files.chiq.me), not plain
   `http://<lan-ip>`. Without `SESSION_SECRET`, login returns 503.

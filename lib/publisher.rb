@@ -3,7 +3,7 @@
 require "fileutils"
 require "securerandom"
 
-# A file is public on demos.grillermo.com when a copy of it sits in the demos
+# A file is public on files.grillermo.com when a copy of it sits in the demos
 # directory, which the separate demos process serves. It's a real copy, never
 # a link: that process can't reach files/, and overwriting the original later
 # doesn't make the new version public by itself.

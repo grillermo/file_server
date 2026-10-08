@@ -17,7 +17,7 @@ export RACK_ENV="${RACK_ENV:-deployment}"
 # One detached tmux session "file_server", two panes:
 #   files : the full app (files.chiq.me + LAN) on $FILES_PORT
 #   demos : demos.ru, only the published copies in demos/, on $DEMOS_PORT.
-#           Bound to 127.0.0.1: the only way in is the demos.grillermo.com
+#           Bound to 127.0.0.1: the only way in is the files.grillermo.com
 #           tunnel route (cloudflared runs on this host).
 # Re-running restarts both panes in place.
 #

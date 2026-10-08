@@ -79,7 +79,7 @@ class DemoAppTest < Minitest::Test
     assert_equal 404, app.call(Rack::MockRequest.env_for("http://demos.example/demo.html")).first
   end
 
-  # The process behind demos.grillermo.com must not even load the upload,
+  # The process behind files.grillermo.com must not even load the upload,
   # login or token code.
   def test_demos_ru_loads_nothing_from_the_main_app
     script = <<~RUBY

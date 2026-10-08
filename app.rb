@@ -49,7 +49,7 @@ class FileServerApp
     in ["POST", "/logout"]
       end_session
     # Cookie-authenticated POSTs rely on SameSite=Strict, which holds only while
-    # files.chiq.me and demos.grillermo.com are different registrable domains (a
+    # files.chiq.me and files.grillermo.com are different registrable domains (a
     # demo page can't send the cookie). If they ever share one, add an
     # Origin/Sec-Fetch-Site check here.
     in ["POST", ("/publish" | "/unpublish") => action]
@@ -490,7 +490,7 @@ class FileServerApp
   end
 
   def demo_url(name)
-    base = ENV.fetch("DEMOS_URL", "https://demos.grillermo.com").chomp("/")
+    base = ENV.fetch("DEMOS_URL", "https://files.grillermo.com").chomp("/")
     "#{base}/#{ERB::Util.url_encode(name)}"
   end
 
