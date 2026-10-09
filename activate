@@ -1,0 +1,7 @@
+#!/bin/sh
+# Run by git-sync after it lands new commits here. Restart the service on the
+# new code, but only on the machine where it already runs (the Mac mini).
+# No login shell under git-sync, and tmux lives in Homebrew.
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+tmux has-session -t "=file_server" 2>/dev/null || exit 0
+exec "$(dirname "$0")/serve"
