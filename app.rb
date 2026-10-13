@@ -220,14 +220,19 @@ class FileServerApp
     return uploaded unless uploaded.is_a?(Hash)
 
     pinned = pinned_name(req)
-    return unprocessable("#{pinned} is reserved") if pinned && RESERVED_NAMES.include?(pinned.downcase)
+    unique = pinned && req.params["ensure_unique_name"] == "true"
+    return unprocessable("#{pinned} is reserved") if pinned && !unique && RESERVED_NAMES.include?(pinned.downcase)
 
-    filename = pinned || build_local_filename(uploaded[:filename])
     FileUtils.mkdir_p(files_dir)
-
     uploaded[:tempfile].rewind
-    File.open(File.join(files_dir, filename), "wb") do |file|
-      IO.copy_stream(uploaded[:tempfile], file)
+
+    if unique
+      filename = write_unique(pinned, uploaded[:tempfile])
+    else
+      filename = pinned || build_local_filename(uploaded[:filename])
+      File.open(File.join(files_dir, filename), "wb") do |file|
+        IO.copy_stream(uploaded[:tempfile], file)
+      end
     end
 
     # A pinned file is overwritten in place, so its URL is stable and every
@@ -284,6 +289,31 @@ class FileServerApp
     return nil if requested.to_s.strip.empty?
 
     sanitize_filename(requested)
+  end
+
+  # ?ensure_unique_name=true never overwrites: a taken (or reserved) name
+  # becomes report-2.html, report-3.html, ... Each candidate is claimed with
+  # an exclusive create, so two concurrent uploads can't land on one name.
+  def write_unique(name, source)
+    ext = File.extname(name)
+    base = File.basename(name, ext)
+    candidates = Enumerator.new do |names|
+      names << name
+      (2..).each { |n| names << "#{base}-#{n}#{ext}" }
+    end
+
+    candidates.each do |candidate|
+      next if RESERVED_NAMES.include?(candidate.downcase)
+
+      begin
+        File.open(File.join(files_dir, candidate), File::WRONLY | File::CREAT | File::EXCL | File::BINARY) do |file|
+          IO.copy_stream(source, file)
+        end
+        return candidate
+      rescue Errno::EEXIST
+        next
+      end
+    end
   end
 
   def sanitize_filename(filename)

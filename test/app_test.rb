@@ -131,6 +131,51 @@ class AppTest < Minitest::Test
     assert_equal 1, Dir.children(@dir).size
   end
 
+  def test_ensure_unique_name_keeps_a_free_name
+    src = write_temp("a.html", "one")
+
+    _, _, body = upload(src, "x", query: "?name=report.html&ensure_unique_name=true")
+
+    assert_equal "http://files.example/files/report.html", body.join
+  end
+
+  def test_ensure_unique_name_suffixes_a_taken_name
+    first = write_temp("v1.html", "one")
+    second = write_temp("v2.html", "two")
+    third = write_temp("v3.html", "three")
+
+    upload(first, "x", query: "?name=report.html&ensure_unique_name=true")
+    _, _, second_body = upload(second, "x", query: "?name=report.html&ensure_unique_name=true")
+    _, _, third_body = upload(third, "x", query: "?name=report.html&ensure_unique_name=true")
+
+    assert_equal "http://files.example/files/report-2.html", second_body.join
+    assert_equal "http://files.example/files/report-3.html", third_body.join
+    assert_equal "one", File.read(File.join(@dir, "report.html"))
+    assert_equal "two", File.read(File.join(@dir, "report-2.html"))
+  end
+
+  def test_ensure_unique_name_suffixes_a_name_without_extension
+    upload(write_temp("a", "one"), "x", query: "?name=notes")
+    _, _, body = upload(write_temp("b", "two"), "x", query: "?name=notes&ensure_unique_name=true")
+
+    assert_equal "http://files.example/files/notes-2", body.join
+  end
+
+  def test_ensure_unique_name_skips_a_reserved_name
+    status, _, body = upload(write_temp("a.html", "x"), "x", query: "?name=mcp.html&ensure_unique_name=true")
+
+    assert_equal 200, status
+    assert_equal "http://files.example/files/mcp-2.html", body.join
+  end
+
+  def test_without_ensure_unique_name_a_taken_name_is_still_overwritten
+    upload(write_temp("v1.html", "one"), "x", query: "?name=report.html")
+    _, _, body = upload(write_temp("v2.html", "two"), "x", query: "?name=report.html&ensure_unique_name=false")
+
+    assert_equal "http://files.example/files/report.html", body.join
+    assert_equal "two", File.read(File.join(@dir, "report.html"))
+  end
+
   def test_pinned_upload_sets_no_cache
     src = write_temp("m.plist", "<plist/>")
 

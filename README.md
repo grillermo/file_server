@@ -126,6 +126,16 @@ pinned responses carry `cache-control: no-cache` so caches in front of the
 service revalidate instead of serving a stale copy. Without `?name=`, uploads
 keep their UUID prefix and never overwrite anything.
 
+To get a readable name without overwriting, add `&ensure_unique_name=true`.
+If the name is free it is used as is; if it is taken (or reserved), the server
+stores the file as `report-2.html`, `report-3.html`, ... and returns that URL:
+
+```sh
+curl -X POST "https://files.chiq.me/upload?name=report.html&ensure_unique_name=true" \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
+  -F "file=@report.html"
+```
+
 ## MCP login
 
 The `file_server` MCP in `agents-configs` logs in with a Slack OTP and then
