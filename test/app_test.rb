@@ -248,6 +248,22 @@ class AppTest < Minitest::Test
     ENV.delete("PUBLIC_URL")
   end
 
+  # --- f.chiq.me ----------------------------------------------------------
+
+  def test_short_host_redirects_to_the_listing
+    status, headers, = @app.call(Rack::MockRequest.env_for("https://f.chiq.me/", method: "GET"))
+
+    assert_equal 301, status
+    assert_equal "https://files.chiq.me/index", headers["location"]
+  end
+
+  def test_short_host_redirects_any_path_to_the_listing
+    status, headers, = @app.call(Rack::MockRequest.env_for("https://f.chiq.me/files/a.txt", method: "GET"))
+
+    assert_equal 301, status
+    assert_equal "https://files.chiq.me/index", headers["location"]
+  end
+
   # --- index ------------------------------------------------------------
 
   def test_index_lists_every_file

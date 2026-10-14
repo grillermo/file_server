@@ -28,6 +28,9 @@ class FileServerApp
 
   def call(env)
     req = Rack::Request.new(env)
+    # f.chiq.me is a short alias for the listing. Redirect rather than serve, so
+    # the session cookie stays on files.chiq.me.
+    return [301, { "location" => "https://files.chiq.me/index" }, []] if req.get_header("HTTP_HOST") == "f.chiq.me"
 
     case [req.request_method, req.path_info]
     in ["POST", "/upload"]
