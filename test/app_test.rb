@@ -251,14 +251,14 @@ class AppTest < Minitest::Test
   # --- f.chiq.me ----------------------------------------------------------
 
   def test_short_host_redirects_to_the_listing
-    status, headers, = @app.call(Rack::MockRequest.env_for("https://f.chiq.me/", method: "GET"))
+    status, headers, = @app.call(Rack::MockRequest.env_for("https://f.chiq.me/", method: "GET", "HTTP_HOST" => "f.chiq.me"))
 
     assert_equal 301, status
     assert_equal "https://files.chiq.me/index", headers["location"]
   end
 
   def test_short_host_redirects_any_path_to_the_listing
-    status, headers, = @app.call(Rack::MockRequest.env_for("https://f.chiq.me/files/a.txt", method: "GET"))
+    status, headers, = @app.call(Rack::MockRequest.env_for("https://f.chiq.me/files/a.txt", method: "GET", "HTTP_HOST" => "f.chiq.me"))
 
     assert_equal 301, status
     assert_equal "https://files.chiq.me/index", headers["location"]
