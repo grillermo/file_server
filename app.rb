@@ -410,8 +410,11 @@ class FileServerApp
       <style>#{listing_css}</style>
       </head>
       <body>
-      <header>#{auth_control(logged_in)}<h1>Files</h1><p class="count">#{entries.size} #{entries.size == 1 ? "file" : "files"}</p></header>
+      <header>#{auth_control(logged_in)}<h1>Files</h1><p class="count" data-total="#{entries.size}">#{entries.size} #{entries.size == 1 ? "file" : "files"}</p></header>
+      #{search_box unless entries.empty?}
       #{body}
+      <p class="empty" id="no-matches" hidden>No matching files.</p>
+      #{search_script unless entries.empty?}
       </body>
       </html>
     HTML
@@ -486,11 +489,63 @@ class FileServerApp
     ].compact.join
 
     <<~ROW
-      <li><span class="rail"></span><a href="#{escape_html(file_url(req, name))}">
+      <li data-name="#{escape_html(rest)}"><span class="rail"></span><a href="#{escape_html(file_url(req, name))}">
       <span class="name">#{label}</span>
       <span class="meta">#{human_size(size)} &middot; #{mtime.strftime("%Y-%m-%d %H:%M")}</span>
       </a>#{publish_controls(name) if logged_in && publishable?(name)}</li>
     ROW
+  end
+
+  def search_box
+    %(<div class="search"><input type="search" id="search" placeholder="Search titles…" autocomplete="off" autofocus aria-label="Search file titles"></div>)
+  end
+
+  # Live, debounced, client-side fuzzy filter over titles (the name without its
+  # UUID prefix). A title matches when the query's characters appear in order
+  # (subsequence), so "rprt2" finds "report-2024.pdf".
+  def search_script
+    <<~HTML
+      <script>
+      (function () {
+        var input = document.getElementById("search");
+        var rows = Array.prototype.slice.call(document.querySelectorAll("ul.files li[data-name]"));
+        var groups = Array.prototype.slice.call(document.querySelectorAll("section.group"));
+        var count = document.querySelector(".count");
+        var none = document.getElementById("no-matches");
+        var timer;
+
+        function fuzzy(query, text) {
+          var i = 0;
+          for (var j = 0; j < text.length && i < query.length; j++) {
+            if (text[j] === query[i]) i++;
+          }
+          return i === query.length;
+        }
+
+        function apply() {
+          var query = input.value.toLowerCase().replace(/\s+/g, "");
+          var shown = 0;
+          rows.forEach(function (li) {
+            var match = !query || fuzzy(query, li.dataset.name.toLowerCase());
+            li.hidden = !match;
+            if (match) shown++;
+          });
+          groups.forEach(function (g) {
+            g.hidden = !g.querySelector("li:not([hidden])");
+          });
+          var total = +count.dataset.total;
+          var label = (n) => n + (n === 1 ? " file" : " files");
+          count.textContent = query ? shown + " of " + label(total) : label(total);
+          none.hidden = shown > 0;
+        }
+
+        input.addEventListener("input", function () {
+          clearTimeout(timer);
+          timer = setTimeout(apply, 150);
+        });
+      })();
+      </script>
+    HTML
   end
 
   def auth_control(logged_in)
@@ -553,6 +608,10 @@ class FileServerApp
       header { max-width: 46rem; margin: 0 auto .75rem; }
       h1 { font-size: 1.25rem; margin: .25rem 0; }
       .count { margin: 0; color: var(--dim); font-size: .85rem; }
+      .search { max-width: 46rem; margin: 0 auto .5rem; }
+      .search input { width: 100%; font: inherit; padding: .55rem .9rem; border: 1px solid var(--line);
+                      border-radius: 10px; background: var(--card); color: inherit; }
+      [hidden] { display: none !important; }
       .empty { max-width: 46rem; margin: 2rem auto; color: var(--dim); }
       .group { max-width: 46rem; margin: 0 auto; }
       .marker { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: .5rem;
