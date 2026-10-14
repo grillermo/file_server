@@ -258,12 +258,72 @@ class PublishingTest < Minitest::Test
 
   # --- listing ---------------------------------------------------------
 
-  def test_listing_logged_out_offers_login_and_no_toggle
+  def test_listing_logged_out_redirects_to_login
     stored("demo.html", "v1")
-    html = body_of(request("GET", "/index")[2])
+    status, headers, body = request("GET", "/index")
 
-    assert_includes html, %(href="/login")
-    refute_includes html, "/publish"
+    assert_equal 303, status
+    assert_equal "/login", headers["location"]
+    refute_includes body_of(body), "demo.html"
+  end
+
+  def test_listing_with_a_forged_cookie_redirects_to_login
+    assert_equal 303, request("GET", "/index", cookie: "9999999999.forged").first
+  end
+
+  # --- password login --------------------------------------------------
+
+  def with_password(value)
+    ENV["ACCESS_PASSWORD"] = value
+    yield
+  ensure
+    ENV.delete("ACCESS_PASSWORD")
+  end
+
+  def test_login_page_offers_a_password_field
+    html = body_of(request("GET", "/login")[2])
+
+    assert_includes html, %(action="/auth/password")
+    assert_includes html, %(type="password" name="password")
+  end
+
+  def test_right_password_opens_a_session_for_the_listing
+    with_password("hunter2") do
+      status, headers, = request("POST", "/auth/password", { "password" => "hunter2" })
+
+      assert_equal 303, status
+      assert_equal "/index", headers["location"]
+      cookie = headers["set-cookie"][/#{Session::COOKIE}=([^;]+)/o, 1]
+      assert_includes headers["set-cookie"], "httponly"
+      assert_equal 200, request("GET", "/index", cookie: cookie).first
+    end
+  end
+
+  def test_wrong_password_is_refused_without_a_cookie
+    with_password("hunter2") do
+      status, headers, body = request("POST", "/auth/password", { "password" => "hunter3" })
+
+      assert_equal 401, status
+      assert_nil headers["set-cookie"]
+      assert_includes body_of(body), "Wrong password."
+    end
+  end
+
+  def test_unset_password_refuses_even_an_empty_one
+    status, headers, = request("POST", "/auth/password", { "password" => "" })
+
+    assert_equal 401, status
+    assert_nil headers["set-cookie"]
+  end
+
+  def test_password_login_needs_session_secret
+    app = FileServerApp.new(otp: @otp, tokens: TokenStore.new(File.join(@dir, "tokens.json")),
+                            session: Session.new(secret: nil))
+    with_password("hunter2") do
+      env = Rack::MockRequest.env_for("http://files.example/auth/password", method: "POST",
+                                      params: { "password" => "hunter2" })
+      assert_equal 503, app.call(env).first
+    end
   end
 
   def test_listing_logged_in_offers_publish_and_logout
@@ -309,7 +369,7 @@ class PublishingTest < Minitest::Test
   end
 
   def test_listing_is_not_cacheable_and_varies_by_cookie
-    headers = request("GET", "/index")[1]
+    headers = request("GET", "/index", cookie: @session.issue)[1]
 
     assert_equal "private, no-store", headers["cache-control"]
     assert_equal "Cookie", headers["vary"]

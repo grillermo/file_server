@@ -49,6 +49,8 @@ class FileServerApp
       serve_login
     in ["POST", "/auth/session"]
       start_session(req)
+    in ["POST", "/auth/password"]
+      password_login(req)
     in ["POST", "/logout"]
       end_session
     # Cookie-authenticated POSTs rely on SameSite=Strict, which holds only while
@@ -129,8 +131,8 @@ class FileServerApp
     label.empty? ? "unknown" : label
   end
 
-  # The browser session only unlocks the publish toggle; uploads still need a
-  # bearer token.
+  # The browser session unlocks /index and the publish toggle; uploads still
+  # need a bearer token.
   def logged_in?(req)
     @session.valid?(req.cookies[Session::COOKIE])
   end
@@ -140,6 +142,23 @@ class FileServerApp
     return text_response(503, "SESSION_SECRET not configured") unless @session.configured?
     return text_response(401, "Invalid or expired code") unless @otp.verify(req.params["code"].to_s.strip)
 
+    session_redirect
+  end
+
+  # ACCESS_PASSWORD from .env, the quick way in from a browser. It opens the same
+  # session as the OTP; with the variable unset, every password is wrong.
+  def password_login(req)
+    return text_response(503, "SESSION_SECRET not configured") unless @session.configured?
+
+    expected = ENV["ACCESS_PASSWORD"].to_s
+    unless !expected.empty? && Rack::Utils.secure_compare(req.params["password"].to_s, expected)
+      return serve_login(error: "Wrong password.", status: 401)
+    end
+
+    session_redirect
+  end
+
+  def session_redirect
     cookie = Rack::Utils.set_cookie_header(
       Session::COOKIE,
       value: @session.issue, path: "/", max_age: Session::TTL,
@@ -149,7 +168,7 @@ class FileServerApp
   end
 
   def end_session
-    redirect("/index", "set-cookie" => Rack::Utils.delete_set_cookie_header(Session::COOKIE, path: "/"))
+    redirect("/login", "set-cookie" => Rack::Utils.delete_set_cookie_header(Session::COOKIE, path: "/"))
   end
 
   def redirect(location, extra_headers = {})
@@ -187,7 +206,7 @@ class FileServerApp
     ENV.fetch("DEMOS_DIR") { File.join(__dir__, "demos") }
   end
 
-  def serve_login
+  def serve_login(error: nil, status: 200)
     html = <<~HTML
       <!DOCTYPE html>
       <html lang="en">
@@ -198,8 +217,14 @@ class FileServerApp
       <style>#{listing_css}</style>
       </head>
       <body>
-      <header><h1>Log in</h1><p class="count" id="status">A code will be posted to Slack #otp.</p></header>
+      <header><h1>Log in</h1></header>
       <main class="login">
+      #{%(<p class="error">#{escape_html(error)}</p>) if error}
+      <form method="post" action="/auth/password">
+      <input type="password" name="password" autocomplete="current-password" autofocus required placeholder="Password" aria-label="Password">
+      <button>Log in</button>
+      </form>
+      <p class="count" id="status">Or get a code posted to Slack #otp.</p>
       <button type="button" id="send">Send code</button>
       <form method="post" action="/auth/session">
       <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" required placeholder="123456">
@@ -215,7 +240,7 @@ class FileServerApp
       </body>
       </html>
     HTML
-    [200, { "content-type" => "text/html; charset=utf-8", "cache-control" => "no-store" }, [html]]
+    [status, { "content-type" => "text/html; charset=utf-8", "cache-control" => "no-store" }, [html]]
   end
 
   def handle_upload(req)
@@ -399,9 +424,10 @@ class FileServerApp
   end
 
   def serve_listing(req)
-    logged_in = logged_in?(req)
+    return redirect("/login") unless logged_in?(req)
+
     entries = listing_entries
-    body = entries.empty? ? %(<p class="empty">No files uploaded yet.</p>) : timeline_groups(req, entries, logged_in)
+    body = entries.empty? ? %(<p class="empty">No files uploaded yet.</p>) : timeline_groups(req, entries)
 
     html = <<~HTML
       <!DOCTYPE html>
@@ -413,7 +439,7 @@ class FileServerApp
       <style>#{listing_css}</style>
       </head>
       <body>
-      <header>#{auth_control(logged_in)}<h1>Files</h1><p class="count" data-total="#{entries.size}">#{entries.size} #{entries.size == 1 ? "file" : "files"}</p></header>
+      <header>#{logout_control}<h1>Files</h1><p class="count" data-total="#{entries.size}">#{entries.size} #{entries.size == 1 ? "file" : "files"}</p></header>
       #{search_box unless entries.empty?}
       #{body}
       <p class="empty" id="no-matches" hidden>No matching files.</p>
@@ -465,11 +491,11 @@ class FileServerApp
 
   # Consecutive entries (already newest first) sharing a month bucket get one
   # sticky marker pill, and each row gets a dot on the timeline rail.
-  def timeline_groups(req, entries, logged_in)
+  def timeline_groups(req, entries)
     entries.chunk_while { |a, b| age_bucket(a[2]) == age_bucket(b[2]) }.map do |group|
       range = age_bucket(group.first[2])
       color = bucket_color(range)
-      rows = group.map { |name, size, mtime| listing_row(req, name, size, mtime, logged_in) }.join("\n")
+      rows = group.map { |name, size, mtime| listing_row(req, name, size, mtime) }.join("\n")
 
       <<~GROUP
         <section class="group" style="--marker: #{color}">
@@ -484,7 +510,7 @@ class FileServerApp
 
   # Names carry a UUID prefix; the prefix is dimmed rather than dropped so the
   # displayed name always matches the stored one — nothing is truncated.
-  def listing_row(req, name, size, mtime, logged_in)
+  def listing_row(req, name, size, mtime)
     prefix, rest = name.match(/\A([0-9a-f-]{36}-)(.+)\z/m)&.captures || [nil, name]
     label = [
       prefix && %(<span class="uuid">#{escape_html(prefix)}</span>),
@@ -495,7 +521,7 @@ class FileServerApp
       <li data-name="#{escape_html(rest)}"><span class="rail"></span><a href="#{escape_html(file_url(req, name))}">
       <span class="name">#{label}</span>
       <span class="meta">#{human_size(size)} &middot; #{mtime.strftime("%Y-%m-%d %H:%M")}</span>
-      </a>#{publish_controls(name) if logged_in && publishable?(name)}</li>
+      </a>#{publish_controls(name) if publishable?(name)}</li>
     ROW
   end
 
@@ -551,9 +577,7 @@ class FileServerApp
     HTML
   end
 
-  def auth_control(logged_in)
-    return %(<a class="auth" href="/login">Log in</a>) unless logged_in
-
+  def logout_control
     %(<form class="auth" method="post" action="/logout"><button type="submit">Log out</button></form>)
   end
 
@@ -644,6 +668,7 @@ class FileServerApp
       .auth { float: right; margin: .3rem 0 0; font-size: .85rem; color: var(--accent); }
       .login { max-width: 46rem; margin: 0 auto; display: grid; gap: .75rem; justify-items: start; }
       .login form { display: flex; gap: .5rem; }
+      .login .error { margin: 0; color: #c0392b; }
       .login input { font: inherit; padding: .4rem .7rem; border: 1px solid var(--line); border-radius: 8px;
                      background: var(--card); color: inherit; }
       form.publish { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: 0; padding: 0 1rem .8rem; }

@@ -14,7 +14,8 @@ class AppTest < Minitest::Test
   def setup
     @dir = Dir.mktmpdir("file_server-test-")
     ENV["FILES_DIR"] = @dir
-    @app = FileServerApp.new
+    @session = Session.new(secret: "s" * 64)
+    @app = FileServerApp.new(session: @session)
   end
 
   def teardown
@@ -43,8 +44,10 @@ class AppTest < Minitest::Test
     @app.call(env)
   end
 
+  # Logged in, so /index renders instead of redirecting to /login.
   def get(path)
-    @app.call(Rack::MockRequest.env_for("http://files.example#{path}", method: "GET"))
+    @app.call(Rack::MockRequest.env_for("http://files.example#{path}", method: "GET",
+                                        "HTTP_COOKIE" => "#{Session::COOKIE}=#{@session.issue}"))
   end
 
   def head(path)

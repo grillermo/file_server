@@ -49,8 +49,8 @@ and first stops whatever is listening on those two ports. Use
 A file is public on files.grillermo.com only while a copy of it sits in `demos/`
 (git-ignored). Everything else stays on files.chiq.me.
 
-On `/index`, click "Log in" (a Slack OTP, same as the MCP login), then use
-"Make public" beside a file; it turns into "Public — unpublish" with the demo link.
+`/index` needs a login: the `ACCESS_PASSWORD` from `.env`, or a Slack OTP (same
+as the MCP login). Logged in, use "Make public" beside a file; it turns into "Public — unpublish" with the demo link.
 From a script:
 
 ```sh
@@ -64,7 +64,8 @@ curl -X POST https://files.chiq.me/unpublish -H "Authorization: Bearer $AUTH_TOK
   the Cloudflare route for files.grillermo.com must point at `http://localhost:33334`.
 - The login cookie (`fs_session`, 30 days, signed with `SESSION_SECRET`) is `Secure`,
   so browser login only works over the HTTPS origin (files.chiq.me), not plain
-  `http://<lan-ip>`. Without `SESSION_SECRET`, login returns 503.
+  `http://<lan-ip>`. Without `SESSION_SECRET`, login returns 503. Without
+  `ACCESS_PASSWORD`, every password is refused and only the OTP works.
 - Sessions are stateless: logging out only clears the browser's cookie. Rotate
   `SESSION_SECRET` to revoke every session.
 - A published file is served with full script power on the demos origin, so
@@ -73,13 +74,13 @@ curl -X POST https://files.chiq.me/unpublish -H "Authorization: Bearer $AUTH_TOK
   demos domain as long as it stays a different registrable domain from files.chiq.me.
   But HTML you upload and open on files.chiq.me/files/* runs on the same origin as
   `/publish`, so a page opened there while logged in could POST to it. Only upload
-  HTML you trust. Impact is limited: every stored file is already listed on the
-  public `/index`, and publishing needs a valid session.
+  HTML you trust. Impact is limited: such a page could already read `/index`
+  and only toggle publishing.
 
 ## Notes
 
 - The app exposes `POST /upload`, `POST /receive`, `GET /files/:name`, `GET /health`,
-  `GET /login`, `POST /auth/session`, `POST /logout`, `POST /publish`, and `POST /unpublish`.
+  `GET /index`, `GET /login`, `POST /auth/session`, `POST /auth/password`, `POST /logout`, `POST /publish`, and `POST /unpublish`.
 - Files are streamed from disk, never read into memory.
 - `GET /health?nonce=<hex>&token_id=<first 16 hex of sha256(token)>` answers
   `{"service":"chiq-file-server","proof":"..."}`, where the proof is
