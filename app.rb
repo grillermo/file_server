@@ -444,6 +444,7 @@ class FileServerApp
       #{body}
       <p class="empty" id="no-matches" hidden>No matching files.</p>
       #{search_script unless entries.empty?}
+      #{copy_script unless entries.empty?}
       </body>
       </html>
     HTML
@@ -521,8 +522,50 @@ class FileServerApp
       <li data-name="#{escape_html(rest)}"><span class="rail"></span><a href="#{escape_html(file_url(req, name))}">
       <span class="name">#{label}</span>
       <span class="meta">#{human_size(size)} &middot; #{mtime.strftime("%Y-%m-%d %H:%M")}</span>
-      </a>#{publish_controls(name) if publishable?(name)}</li>
+      </a><button type="button" class="copy" data-url="#{escape_html(file_url(req, name))}" aria-label="Copy link to #{escape_html(name)}">Copy</button>#{publish_controls(name) if publishable?(name)}</li>
     ROW
+  end
+
+  # Copies a row's file URL. navigator.clipboard needs a secure context, so a
+  # textarea + execCommand covers the plain-http LAN address.
+  def copy_script
+    <<~HTML
+      <script>
+      (function () {
+        function fallback(text) {
+          var area = document.createElement("textarea");
+          area.value = text;
+          area.style.position = "fixed";
+          area.style.opacity = "0";
+          document.body.appendChild(area);
+          area.select();
+          var ok = false;
+          try { ok = document.execCommand("copy"); } catch (e) {}
+          document.body.removeChild(area);
+          return ok;
+        }
+
+        function flash(button, label) {
+          button.textContent = label;
+          setTimeout(function () { button.textContent = "Copy"; }, 1500);
+        }
+
+        document.addEventListener("click", function (event) {
+          var button = event.target.closest("button.copy");
+          if (!button) return;
+          var url = button.dataset.url;
+          if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(url).then(
+              function () { flash(button, "Copied"); },
+              function () { flash(button, fallback(url) ? "Copied" : "Failed"); }
+            );
+          } else {
+            flash(button, fallback(url) ? "Copied" : "Failed");
+          }
+        });
+      })();
+      </script>
+    HTML
   end
 
   def search_box
@@ -665,6 +708,7 @@ class FileServerApp
       .meta { display: block; margin-top: .2rem; color: var(--dim); font-size: .8rem; }
       button { font: inherit; font-size: .8rem; padding: .3rem .7rem; border: 1px solid var(--line);
                border-radius: 8px; background: var(--card); color: inherit; }
+      ul.files button.copy { align-self: flex-start; margin: .6rem 0 0; }
       .auth { float: right; margin: .3rem 0 0; font-size: .85rem; color: var(--accent); }
       .login { max-width: 46rem; margin: 0 auto; display: grid; gap: .75rem; justify-items: start; }
       .login form { display: flex; gap: .5rem; }

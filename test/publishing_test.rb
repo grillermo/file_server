@@ -336,6 +336,15 @@ class PublishingTest < Minitest::Test
     refute_includes html, "files.grillermo.com"
   end
 
+  def test_listing_offers_a_copy_button_with_the_file_url
+    stored("demo.html", "v1")
+    html = body_of(request("GET", "/index", cookie: @session.issue)[2])
+
+    assert_includes html, %(class="copy" data-url=")
+    assert_includes html, "/files/demo.html"
+    assert_includes html, "navigator.clipboard"
+  end
+
   def test_listing_shows_the_demo_url_and_unpublish_for_published_files
     stored("demo.html", "v1")
     request("POST", "/publish", { "name" => "demo.html" }, token: "test-token")
