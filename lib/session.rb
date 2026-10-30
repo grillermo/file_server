@@ -4,11 +4,12 @@ require "openssl"
 require "rack/utils"
 
 # Browser login for the publish toggle. The cookie value is
-# "<expires_at>.<hmac>" signed with SESSION_SECRET, so nothing is stored
-# server-side; changing the secret logs every browser out.
+# "<issued_at>.<hmac>" signed with SESSION_SECRET, so nothing is stored
+# server-side. A session never expires; changing the secret logs every browser out.
 class Session
   COOKIE = "fs_session"
-  TTL = 30 * 24 * 60 * 60
+  # The longest browsers keep a cookie (Chrome caps it at 400 days).
+  COOKIE_MAX_AGE = 400 * 24 * 60 * 60
 
   def self.from_env
     new(secret: ENV["SESSION_SECRET"])
@@ -26,8 +27,8 @@ class Session
   def issue
     raise "SESSION_SECRET not configured" unless configured?
 
-    expires_at = (@clock.call.to_i + TTL).to_s
-    "#{expires_at}.#{sign(expires_at)}"
+    issued_at = @clock.call.to_i.to_s
+    "#{issued_at}.#{sign(issued_at)}"
   end
 
   def valid?(value)
@@ -36,10 +37,10 @@ class Session
     value = value.to_s
     return false unless value.valid_encoding?
 
-    expires_at, mac = value.split(".", 2)
-    return false unless expires_at&.match?(/\A\d+\z/) && !mac.to_s.empty?
+    issued_at, mac = value.split(".", 2)
+    return false unless issued_at&.match?(/\A\d+\z/) && !mac.to_s.empty?
 
-    Rack::Utils.secure_compare(sign(expires_at), mac) && expires_at.to_i > @clock.call.to_i
+    Rack::Utils.secure_compare(sign(issued_at), mac)
   end
 
   private

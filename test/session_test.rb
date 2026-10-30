@@ -13,17 +13,17 @@ class SessionTest < Minitest::Test
     assert @session.valid?(@session.issue)
   end
 
-  def test_expires_after_the_ttl
+  def test_never_expires
     value = @session.issue
-    @now += Session::TTL
+    @now += 100 * 365 * 24 * 60 * 60
 
-    refute @session.valid?(value)
+    assert @session.valid?(value)
   end
 
-  def test_a_tampered_expiry_is_rejected
-    expires_at, mac = @session.issue.split(".")
+  def test_a_tampered_timestamp_is_rejected
+    issued_at, mac = @session.issue.split(".")
 
-    refute @session.valid?("#{expires_at.to_i + 1}.#{mac}")
+    refute @session.valid?("#{issued_at.to_i + 1}.#{mac}")
   end
 
   def test_a_value_signed_with_another_secret_is_rejected

@@ -49,8 +49,7 @@ and first stops whatever is listening on those two ports. Use
 A file is public on files.grillermo.com only while a copy of it sits in `demos/`
 (git-ignored). Everything else stays on files.chiq.me.
 
-`/index` needs a login: the `ACCESS_PASSWORD` from `.env`, or a Slack OTP (same
-as the MCP login). Logged in, use "Make public" beside a file; it turns into "Public — unpublish" with the demo link.
+`/index` needs a login with a Slack OTP (same as the MCP login). Logged in, use "Make public" beside a file; it turns into "Public — unpublish" with the demo link.
 From a script:
 
 ```sh
@@ -62,10 +61,10 @@ curl -X POST https://files.chiq.me/unpublish -H "Authorization: Bearer $AUTH_TOK
 - The demos process (`demos.ru`) serves only `GET`/`HEAD /<name>` for files in
   `demos/` and answers 404 to everything else. It listens on 127.0.0.1 only, so
   the Cloudflare route for files.grillermo.com must point at `http://localhost:33334`.
-- The login cookie (`fs_session`, 30 days, signed with `SESSION_SECRET`) is `Secure`,
+- The login cookie (`fs_session`, signed with `SESSION_SECRET`) never expires on the
+  server. Browsers cap cookies at about 400 days, so each `/index` visit restarts it. It is `Secure`,
   so browser login only works over the HTTPS origin (files.chiq.me), not plain
-  `http://<lan-ip>`. Without `SESSION_SECRET`, login returns 503. Without
-  `ACCESS_PASSWORD`, every password is refused and only the OTP works.
+  `http://<lan-ip>`. Without `SESSION_SECRET`, login returns 503.
 - Sessions are stateless: logging out only clears the browser's cookie. Rotate
   `SESSION_SECRET` to revoke every session.
 - A published file is served with full script power on the demos origin, so
@@ -80,7 +79,7 @@ curl -X POST https://files.chiq.me/unpublish -H "Authorization: Bearer $AUTH_TOK
 ## Notes
 
 - The app exposes `POST /upload`, `POST /receive`, `GET /files/:name`, `GET /health`,
-  `GET /index`, `GET /login`, `POST /auth/session`, `POST /auth/password`, `POST /logout`, `POST /publish`, and `POST /unpublish`.
+  `GET /index`, `GET /login`, `POST /auth/session`, `POST /logout`, `POST /publish`, and `POST /unpublish`.
 - Files are streamed from disk, never read into memory.
 - `GET /health?nonce=<hex>&token_id=<first 16 hex of sha256(token)>` answers
   `{"service":"chiq-file-server","proof":"..."}`, where the proof is

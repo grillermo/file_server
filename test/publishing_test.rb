@@ -68,6 +68,11 @@ class PublishingTest < Minitest::Test
     assert_equal "text/html; charset=utf-8", headers["content-type"]
     assert_includes html, %(action="/auth/session")
     assert_includes html, "/auth/otp"
+    refute_includes html, "password"
+  end
+
+  def test_password_login_is_gone
+    assert_equal 404, request("POST", "/auth/password", { "password" => "hunter2" }).first
   end
 
   def test_a_valid_code_sets_a_locked_down_cookie_and_redirects_to_the_index
@@ -78,6 +83,7 @@ class PublishingTest < Minitest::Test
     assert_equal 303, status
     assert_equal "/index", headers["location"]
     %w[httponly secure samesite=strict path=/].each { |flag| assert_includes cookie, flag }
+    assert_includes cookie, "max-age=#{Session::COOKIE_MAX_AGE}"
     assert @session.valid?(headers["set-cookie"][/#{Session::COOKIE}=([^;]+)/o, 1])
   end
 
@@ -135,12 +141,12 @@ class PublishingTest < Minitest::Test
     refute File.exist?(demo("demo.html"))
   end
 
-  def test_an_expired_session_cannot_publish
+  def test_an_old_session_can_still_publish
     stored("demo.html", "v1")
     cookie = log_in
-    @now += Session::TTL
+    @now += 100 * 365 * 24 * 60 * 60
 
-    assert_equal 401, request("POST", "/publish", { "name" => "demo.html" }, cookie: cookie).first
+    assert_equal 303, request("POST", "/publish", { "name" => "demo.html" }, cookie: cookie).first
   end
 
   def test_unpublish_removes_the_copy_and_keeps_the_original
@@ -267,63 +273,14 @@ class PublishingTest < Minitest::Test
     refute_includes body_of(body), "demo.html"
   end
 
+  def test_visiting_the_listing_restarts_the_cookie
+    _, headers, = request("GET", "/index", cookie: log_in)
+
+    assert_includes headers["set-cookie"].downcase, "max-age=#{Session::COOKIE_MAX_AGE}"
+  end
+
   def test_listing_with_a_forged_cookie_redirects_to_login
     assert_equal 303, request("GET", "/index", cookie: "9999999999.forged").first
-  end
-
-  # --- password login --------------------------------------------------
-
-  def with_password(value)
-    ENV["ACCESS_PASSWORD"] = value
-    yield
-  ensure
-    ENV.delete("ACCESS_PASSWORD")
-  end
-
-  def test_login_page_offers_a_password_field
-    html = body_of(request("GET", "/login")[2])
-
-    assert_includes html, %(action="/auth/password")
-    assert_includes html, %(type="password" name="password")
-  end
-
-  def test_right_password_opens_a_session_for_the_listing
-    with_password("hunter2") do
-      status, headers, = request("POST", "/auth/password", { "password" => "hunter2" })
-
-      assert_equal 303, status
-      assert_equal "/index", headers["location"]
-      cookie = headers["set-cookie"][/#{Session::COOKIE}=([^;]+)/o, 1]
-      assert_includes headers["set-cookie"], "httponly"
-      assert_equal 200, request("GET", "/index", cookie: cookie).first
-    end
-  end
-
-  def test_wrong_password_is_refused_without_a_cookie
-    with_password("hunter2") do
-      status, headers, body = request("POST", "/auth/password", { "password" => "hunter3" })
-
-      assert_equal 401, status
-      assert_nil headers["set-cookie"]
-      assert_includes body_of(body), "Wrong password."
-    end
-  end
-
-  def test_unset_password_refuses_even_an_empty_one
-    status, headers, = request("POST", "/auth/password", { "password" => "" })
-
-    assert_equal 401, status
-    assert_nil headers["set-cookie"]
-  end
-
-  def test_password_login_needs_session_secret
-    app = FileServerApp.new(otp: @otp, tokens: TokenStore.new(File.join(@dir, "tokens.json")),
-                            session: Session.new(secret: nil))
-    with_password("hunter2") do
-      env = Rack::MockRequest.env_for("http://files.example/auth/password", method: "POST",
-                                      params: { "password" => "hunter2" })
-      assert_equal 503, app.call(env).first
-    end
   end
 
   def test_listing_logged_in_offers_publish_and_logout
