@@ -8,3 +8,4 @@ files/*
 tokens.json
 .worktrees/
 demos/
+tmp/

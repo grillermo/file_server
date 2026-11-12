@@ -136,6 +136,29 @@ curl -X POST "https://files.chiq.me/upload?name=report.html&ensure_unique_name=t
   -F "file=@report.html"
 ```
 
+### Large files in parts
+
+Through the Cloudflare tunnel, request bodies past ~12 MB stall (524) and past
+~25 MB are refused. Send a bigger file as numbered parts (each under ~12 MB),
+then have the server join them (`lib/chunked_upload.rb`). The upload id is
+16–64 lowercase hex characters you choose; re-sending a part replaces it.
+
+```sh
+id=$(openssl rand -hex 16)
+split -b 8m App.ipa part-   # part-aa, part-ab, ...
+i=0; for p in part-*; do
+  curl -X POST "https://files.chiq.me/upload/part?upload_id=$id&part=$i" \
+    -H "Authorization: Bearer $AUTH_TOKEN" -F "file=@$p"; i=$((i+1))
+done
+curl -X POST "https://files.chiq.me/upload/assemble?upload_id=$id&name=App.ipa&parts=$i&size=$(stat -f%z App.ipa)&sha256=$(shasum -a 256 App.ipa | cut -d' ' -f1)" \
+  -H "Authorization: Bearer $AUTH_TOKEN"
+```
+
+Assembling checks the size and SHA-256, then renames the joined file over
+`files/<name>` like a pinned upload (answering its URL with
+`cache-control: no-cache`). Parts wait in `tmp/parts/` (`PARTS_DIR`), outside
+`files/`, and an upload never assembled is deleted a day later.
+
 ## MCP login
 
 The `file_server` MCP in `agents-configs` logs in with a Slack OTP and then

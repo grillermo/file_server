@@ -6,6 +6,7 @@ require "json"
 require "rack"
 require "securerandom"
 require "uri"
+require_relative "lib/chunked_upload"
 require_relative "lib/file_body"
 require_relative "lib/otp"
 require_relative "lib/publisher"
@@ -37,6 +38,14 @@ class FileServerApp
       return unauthorized unless authenticated?(req)
 
       handle_upload(req)
+    in ["POST", "/upload/part"]
+      return unauthorized unless authenticated?(req)
+
+      handle_upload_part(req)
+    in ["POST", "/upload/assemble"]
+      return unauthorized unless authenticated?(req)
+
+      handle_upload_assemble(req)
     in ["POST", "/receive"]
       return unauthorized unless authenticated?(req)
 
@@ -251,6 +260,42 @@ class FileServerApp
     # than serve the previous release.
     headers = pinned ? { "cache-control" => "no-cache" } : {}
     text_response(200, file_url(req, filename), headers)
+  end
+
+  # One slice of a file too big for the tunnel; see lib/chunked_upload.rb.
+  # ?upload_id=<hex>&part=<0-based index>, with the slice as multipart "file".
+  def handle_upload_part(req)
+    uploaded = extract_uploaded_file(req)
+    return uploaded unless uploaded.is_a?(Hash)
+
+    uploaded[:tempfile].rewind
+    size = chunked_upload.store_part(req.params["upload_id"], req.params["part"], uploaded[:tempfile])
+    text_response(200, size.to_s)
+  rescue ChunkedUpload::Error => e
+    unprocessable(e.message)
+  end
+
+  # ?upload_id=&name=&parts=&size=&sha256= joins the parts into files/<name>,
+  # overwriting it like a pinned upload, and answers its URL.
+  def handle_upload_assemble(req)
+    name = pinned_name(req)
+    return unprocessable("name is required") unless name
+    return unprocessable("#{name} is reserved") if RESERVED_NAMES.include?(name.downcase)
+
+    chunked_upload.assemble(req.params["upload_id"], name, parts: req.params["parts"],
+                                                           size: req.params["size"], sha256: req.params["sha256"])
+    text_response(200, file_url(req, name), { "cache-control" => "no-cache" })
+  rescue ChunkedUpload::Error => e
+    unprocessable(e.message)
+  end
+
+  def chunked_upload
+    ChunkedUpload.new(parts_dir: parts_dir, files_dir: files_dir)
+  end
+
+  # Outside files_dir, so half-sent uploads are never listed or served.
+  def parts_dir
+    ENV.fetch("PARTS_DIR") { File.join(__dir__, "tmp", "parts") }
   end
 
   def handle_receive(req)
