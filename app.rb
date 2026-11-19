@@ -721,16 +721,17 @@ class FileServerApp
       .pill { padding: .1rem .65rem; border-radius: 999px; background: var(--marker); color: #fff;
               font-size: .7rem; font-weight: 600; }
       ul.files { list-style: none; margin: 0; padding: 0; }
-      ul.files li { display: flex; gap: .75rem; }
-      .rail { position: relative; flex: 0 0 1.25rem; }
+      /* rail | card | copy, with the publish controls on a second row under the card. */
+      ul.files li { display: grid; grid-template-columns: 1.25rem minmax(0, 1fr) auto; column-gap: .75rem; }
+      .rail { position: relative; grid-column: 1; grid-row: 1 / span 2; }
       .rail::before { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 2px;
                       transform: translateX(-50%); background: var(--line); }
       .rail::after { content: ""; position: absolute; top: 1.4rem; left: 50%; width: .65rem; height: .65rem;
                      transform: translateX(-50%); border-radius: 50%; background: var(--marker);
                      border: 2px solid var(--bg); box-sizing: content-box; }
-      ul.files a { flex: 1; min-width: 0; display: block; margin: .25rem 0; padding: .8rem 1rem; color: inherit;
+      ul.files li > a { grid-column: 2; grid-row: 1; min-width: 0; display: block; margin: .25rem 0; padding: .8rem 1rem; color: inherit;
                    text-decoration: none; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
-      ul.files a:active { background: var(--line); }
+      ul.files li > a:active { background: var(--line); }
       /* Names wrap in full — never clipped, never ellipsised. */
       .name { display: block; overflow-wrap: anywhere; word-break: break-word; hyphens: none; }
       .uuid { color: var(--dim); font-size: .8em; }
@@ -738,14 +739,15 @@ class FileServerApp
       .meta { display: block; margin-top: .2rem; color: var(--dim); font-size: .8rem; }
       button { font: inherit; font-size: .8rem; padding: .3rem .7rem; border: 1px solid var(--line);
                border-radius: 8px; background: var(--card); color: inherit; }
-      ul.files button.copy { align-self: flex-start; margin: .6rem 0 0; }
+      ul.files button.copy { grid-column: 3; grid-row: 1; align-self: start; margin: .6rem 0 0; }
       .auth { float: right; margin: .3rem 0 0; font-size: .85rem; color: var(--accent); }
       .login { max-width: 46rem; margin: 0 auto; display: grid; gap: .75rem; justify-items: start; }
       .login form { display: flex; gap: .5rem; }
       .login input { font: inherit; padding: .4rem .7rem; border: 1px solid var(--line); border-radius: 8px;
                      background: var(--card); color: inherit; }
-      form.publish { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: 0; padding: 0 1rem .8rem; }
-      ul.files a.demo { display: inline; padding: 0; color: var(--accent); font-size: .8rem; overflow-wrap: anywhere; }
+      form.publish { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; min-width: 0;
+                     grid-column: 2 / span 2; grid-row: 2; margin: 0; padding: .2rem 0 .8rem; }
+      a.demo { min-width: 0; color: var(--accent); font-size: .8rem; overflow-wrap: anywhere; }
       @media (min-width: 40rem) { body { padding: 2rem 1.5rem 4rem; } }
     CSS
   end
