@@ -4,7 +4,7 @@ Minimal headless Rack app that accepts a file upload, stores it locally, and ser
 
 ## Requirements
 
-- Ruby 3.2.4
+- Ruby 4.0.10
 - Bundler
 
 ## Setup
